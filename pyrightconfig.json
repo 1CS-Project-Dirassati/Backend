@@ -1,7 +1,0 @@
-{
-  "diagnosticSeverityOverrides": {
-    "reportUnusedImport": "none",
-    "reportUnusedVariable": "none"
-  }
-}
-
