@@ -1,0 +1,16 @@
+[project]
+name = "madrassati"
+version = "0.1.0"
+description = "A Flask API application with CORS and database support"
+dependencies = [
+    "flask",
+    "flask-sqlalchemy",
+    "flask-migrate",
+    "flask-cors",
+    "pyjwt",
+    "flask-bcrypt",
+]
+
+[build-system]
+requires = ["flit_core<4"]
+build-backend = "flit_core.buildapi"
