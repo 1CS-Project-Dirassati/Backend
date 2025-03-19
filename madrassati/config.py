@@ -8,4 +8,4 @@ class Config:
      # JWT expiration time (in seconds)
     JWT_EXPIRATION = int(os.getenv("JWT_EXPIRATION", 3600))  # Default: 1 hour
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")  # Default: HS256
-
+    REDIS_URL = "redis://:password@localhost:6379/0"
