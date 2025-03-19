@@ -93,7 +93,7 @@ def verify_otp():
     # Retrieve OTP from Redis
     stored_otp = redis_client.get(f"otp:{phone_number}")
     if not stored_otp or stored_otp.decode("utf-8") != otp_code:
-        return jsonify({"error": "Invalid or expired OTP"}), 400
+        return jsonify({"error": "Invalid or expired OTP"}), 403
 
     # Remove OTP after successful verification
     redis_client.delete(f"otp:{phone_number}")

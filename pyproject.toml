@@ -9,6 +9,8 @@ dependencies = [
     "flask-cors",
     "pyjwt",
     "flask-bcrypt",
+    "flask-limiter",
+    "flask-redis"
 ]
 
 [build-system]
