@@ -6,7 +6,6 @@ app = Flask(__name__)
 app.config.from_object("madrassati.config.Config")
 db.init_app(app)
 migrate.init_app(app, db)
-redis_client.init_app (app)
 flask_limiter.init_app(app)
 #register the error handlers
 app.register_error_handler(404, handle_404)
