@@ -89,10 +89,11 @@ def verify_otp():
 
     if not email or not phone_number or not otp_code or not password:
         return jsonify({"error": "Missing required fields"}), 400
-
     # Retrieve OTP from Redis
     stored_otp = redis_client.get(f"otp:{phone_number}")
-    if not stored_otp or stored_otp.decode("utf-8") != otp_code:
+    string_otp = stored_otp.decode() if isinstance(stored_otp, bytes) else str(stored_otp)
+
+    if not stored_otp or string_otp != otp_code:
         return jsonify({"error": "Invalid or expired OTP"}), 403
 
     # Remove OTP after successful verification

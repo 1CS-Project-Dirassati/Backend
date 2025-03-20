@@ -10,7 +10,8 @@ dependencies = [
     "pyjwt",
     "flask-bcrypt",
     "flask-limiter",
-    "flask-redis"
+    "redislite",
+    "asgiref",
 ]
 
 [build-system]
