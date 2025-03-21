@@ -10,9 +10,6 @@ from madrassati.extensions import flask_limiter
 from flask_limiter.util import get_remote_address
 from . import auth_bp
 
-
-# Initialize rate limiter with Redis backend
-
 # OTP expiration time (in minutes)
 OTP_EXPIRATION_MINUTES = 10
 
@@ -101,9 +98,65 @@ def verify_otp():
 
 
     # Create and save user
-    new_user = User(email=email, phoneNumber=phone_number, password=password)
+    new_user = User(email=email, phoneNumber=phone_number, password=generate_password_hash(password))
     db.session.add(new_user)
     db.session.commit()
 
     return jsonify({"message": "Registration completed successfully."}), 201
+@auth_bp.route("/forgot-password", methods=["POST"])
+@flask_limiter.limit("3 per minute")
+def forgot_password():
+    """Send an OTP for password reset via phone number."""
+    data = request.get_json()
+    phone_number = data.get("phoneNumber")
+
+    user = User.query.filter_by(phoneNumber=phone_number).first()
+    if not user:
+        return jsonify({"error": "User not found."}), 404
+
+    # Generate a new OTP
+    otp_code = random.randint(10000, 99999)
+    expiration_time = timedelta(minutes=OTP_EXPIRATION_MINUTES)
+    print (otp_code)
+
+    # Store OTP in Redis
+    redis_client.setex(f"otp:{phone_number}", expiration_time, otp_code)
+
+    # TODO: Send OTP via SMS (replace this with actual SMS API)
+    print(f"Password reset OTP for {phone_number}: {otp_code}")
+
+    return jsonify({"message": "OTP sent. Please verify to reset password."}), 200
+
+
+@auth_bp.route("/verify-otp-reset", methods=["POST"])
+@flask_limiter.limit("5 per minute")
+def verify_otp_reset():
+    """Verify OTP and reset password."""
+    data = request.get_json()
+    phone_number = data.get("phoneNumber")
+    otp_code = data.get("otp")
+    new_password = data.get("password")
+
+    if not phone_number or not otp_code or not new_password:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    # Retrieve stored OTP from Redis
+    stored_otp = redis_client.get(f"otp:{phone_number}")
+    string_otp = stored_otp.decode() if isinstance(stored_otp, bytes) else str(stored_otp)
+
+    if not stored_otp or string_otp != otp_code:
+        return jsonify({"error": "Invalid or expired OTP"}), 403
+
+    # Remove OTP after successful verification
+    redis_client.delete(f"otp:{phone_number}")
+
+    # Update user password
+    user = User.query.filter_by(phoneNumber=phone_number).first()
+    if not user:
+        return jsonify({"error": "User not found."}), 404
+
+    user.password = generate_password_hash(new_password)
+    db.session.commit()
+
+    return jsonify({"message": "Password reset successful."}), 200
 

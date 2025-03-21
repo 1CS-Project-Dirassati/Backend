@@ -41,7 +41,7 @@ class User(db.Model):
 
     def __init__(self, email, password,phoneNumber):
         self.email = email
-        self.password = generate_password_hash(password)  # Hash password before storing
+        self.password = password  # Hash password before storing
         self.phoneNumber = phoneNumber
 
 class Parent(User):
@@ -108,20 +108,4 @@ class PendingStudent(db.Model):
         return f"<PendingStudent id={self.id} isApproved={self.isApproved}>"
 
 
-class OTP(db.Model):
-    __tablename__ = 'otp'
-
-    id = db.Column(db.Integer, primary_key=True)
-    parentId = db.Column(db.Integer, db.ForeignKey('parent.id'), nullable=False)
-    otpCode = db.Column(db.String(10), nullable=False)
-    createdAt = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    expiresAt = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc) + timedelta(minutes=10), nullable=False)
-    isUsed = db.Column(db.Boolean, default=False, nullable=False)
-
-
-    def __repr__(self):
-        return f"<OTP id={self.id} otpCode={self.otpCode}>"
-    def __init__(self,parent_id,otp_code) -> None:
-        self.parentId = parent_id
-        self.otpCode = otp_code
 
