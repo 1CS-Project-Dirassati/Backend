@@ -71,7 +71,7 @@ def register():
     # Print OTP for debugging (remove in production)
     print(f"OTP for {phone_number}: {otp_code}")
 
-    return jsonify({"message": "OTP sent successfully. Please verify to complete registration."}), 201
+    return jsonify({"message": f"OTP sent successfully:otp:{otp_code}. Please verify to complete registration."}), 201
 
 
 @auth_bp.route("/verify-otp", methods=["POST"])
