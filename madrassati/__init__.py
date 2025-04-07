@@ -1,6 +1,6 @@
 from flask import Flask
 from madrassati.blueprints.auth import auth_bp
-from madrassati.extensions import db ,migrate , redis_client ,flask_limiter
+from madrassati.extensions import db ,migrate   ,flask_limiter
 from madrassati.errors import handle_404, handle_401, handle_500
 app = Flask(__name__)
 app.config.from_object("madrassati.config.Config")
