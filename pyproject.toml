@@ -12,7 +12,9 @@ dependencies = [
     "flask-limiter",
     "redislite",
     "asgiref",
-    "flask-restx"
+    "flask-restx",
+    "mailjet-rest",
+
 ]
 
 [build-system]
