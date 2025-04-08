@@ -1,9 +1,10 @@
 # madrassati/auth/views.py
 from werkzeug.security import generate_password_hash, check_password_hash
-
+from flask import current_app
 from madrassati.models import User
 from madrassati.extensions import db
-from .utils import generate_token, generate_and_store_otp, verify_stored_otp
+from .utils import generate_token, generate_and_store_otp, verify_stored_otp , OTP_EXPIRATION_MINUTES
+from madrassati.services import send_email
 from .errors import InvalidCredentialsError, UserNotFoundError, UserAlreadyExistsError, InvalidOtpError # Assuming you create these custom exceptions in errors.py
 
 def login_user(email, password):
@@ -47,14 +48,28 @@ def initiate_registration(email, password, phone_number):
     if existing_user:
         raise UserAlreadyExistsError("User with this email already exists")
 
-    # Note: Password isn't used here but passed to keep track for the next step (verify_otp)
-    # In a real scenario, you might store temporary registration data linked to the OTP.
-    otp_code = generate_and_store_otp(phone_number)
+    otp_code = generate_and_store_otp(phone_number) # OTP stored in Redis (keyed by phone)
 
-    # NOTE: Returning OTP in message only for consistency with original code.
-    # In production, DO NOT return the OTP code in the response.
-    return {"message": f"OTP sent successfully:otp:{otp_code}. Please verify to complete registration."}
+    # --- Send OTP Email ---
+    subject = f"Madrassati Registration - Your OTP Code ({otp_code})" # Include OTP in subject for easy finding
+    template = "email/otp_email" # Prefix for otp_email.html / otp_email.txt
+    context = {
+        "otp_code": otp_code,
+        "expiration_minutes": OTP_EXPIRATION_MINUTES
+    }
+    email_sent = send_email(to_email=email, subject=subject, template_prefix=template, context=context)
+    if not email_sent:
+        # Log the failure but proceed with registration initiation
+        # The user can still verify via phone OTP stored in Redis
+        current_app.logger.warning(f"Failed to send OTP email to {email} during registration initiation.")
+    # --- End Send Email ---
 
+    # Modify the response message - DO NOT include OTP here for security.
+    return {"message": "OTP sent to your phone (and email if configured). Please verify to complete registration."}
+
+# --- complete_registration function remains the same ---
+# (It only verifies the OTP provided by the user, doesn't send email)
+# ...
 
 def complete_registration(email, phone_number, otp_code, password):
     """
