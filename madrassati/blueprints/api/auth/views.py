@@ -1,13 +1,15 @@
 # madrassati/auth/views.py
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import  generate_password_hash, check_password_hash
+from datetime import  datetime ,timezone , timedelta
 from flask import current_app
-from madrassati.models import User
-from madrassati.extensions import db
-from .utils import generate_token, generate_and_store_otp, verify_stored_otp , OTP_EXPIRATION_MINUTES
-from madrassati.services import send_email
-from .errors import InvalidCredentialsError, UserNotFoundError, UserAlreadyExistsError, InvalidOtpError # Assuming you create these custom exceptions in errors.py
 
-def login_user(email, password):
+from madrassati.models import User
+from madrassati.extensions import db , redis_client
+from .utils import find_user_by_email,retrieve_token, generate_access_token,generate_refresh_token, generate_and_store_otp, store_token, verify_stored_otp , OTP_EXPIRATION_MINUTES , find_user_by_email
+from madrassati.services import send_email
+from .errors import MissingDataError, InvalidCredentialsError, InvalidRefreshTokenError, UserNotFoundError, UserAlreadyExistsError, InvalidOtpError # Assuming you create these custom exceptions in errors.py
+
+def login(email, password):
     """
     Authenticates a user based on email and password.
 
@@ -21,13 +23,65 @@ def login_user(email, password):
     Raises:
         InvalidCredentialsError: If email/password combination is incorrect.
     """
-    user = User.query.filter_by(email=email).first()
+    user = find_user_by_email(email)
     if not user or not check_password_hash(user.password, password):
         raise InvalidCredentialsError("Invalid email or password")
+    try:
+            # Define access token payload
+            access_token = generate_access_token(user.id) # Generate access token
+            expires_at = datetime.now(timezone.utc) + timedelta(seconds= current_app.config['REFRESH_TOKEN_EXPIRES'])
 
-    token = generate_token(user.id)
-    return {"token": token}
+            # Generate refresh token
+            refresh_token = generate_refresh_token()
+            # store the refresh token securely
+            store_token(user.id , refresh_token, expires_at)
+            # Store the refresh token (in a real app, store securely in a database)
+            # Return both tokens to the client
+            return ({
+                "message": "Login successful",
+                "access_token": access_token,
+                "refresh_token": refresh_token
+                # Optionally include basic user info again
+                # "user": {"id": user['id'], "email": user['email']}
+            }), 200 # OK
 
+    except Exception as e:
+            current_app.logger.error(f"Error generating tokens: {e}")
+            return ({"error": "Failed to generate authentication tokens"}), 500 # Internal Server Error
+
+def refresh_token(refresh_token):
+    """
+    Endpoint to refresh the access token using a valid refresh token.
+    Expects JSON body with 'refresh_token'.
+    Returns a new access token if the refresh token is valid.
+    """
+    try:
+        if not refresh_token:
+            raise MissingDataError
+        token_dict= retrieve_token(refresh_token)
+        if not token_dict:
+            raise InvalidRefreshTokenError("dict was empty ")
+        print("debug point")
+        print(token_dict.get("user_id"))
+        print (token_dict.get("expires_at"))
+        user_id = token_dict.get("user_id")
+        if user_id :
+            user = User.query.filter_by(id=user_id).first()
+            print(user)
+            if user :
+                # generate new access token
+                access_token = generate_access_token(user.id)
+                return ({"access_token": access_token}), 200
+            else :
+                current_app.logger.warning(f"User not found for user ID from valid refresh token: {user_id}")
+                raise InvalidRefreshTokenError("Invalid refresh token")
+        else :
+            raise InvalidRefreshTokenError("Invalid refresh token")
+
+
+    except Exception as e:
+        current_app.logger.error(f"Error refreshing token: {e}")
+        return ({"error": "Failed to refresh token"}), 500
 
 def initiate_registration(email, password, phone_number):
     """

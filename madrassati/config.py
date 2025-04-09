@@ -5,6 +5,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///madrassati.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    ERROR_INCLUDE_MESSAGE=False  # Don't include error messages in responses
      # JWT expiration time (in seconds)
     JWT_EXPIRATION = int(os.getenv("JWT_EXPIRATION", 3600))  # Default: 1 hour
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")  # Default: HS256
@@ -18,3 +19,4 @@ class Config:
     # Default sender email address (verified in your Mailjet account)
     MAIL_SENDER = os.environ.get('MAIL_SENDER', 'cmax0890@gmail.com')
     MAIL_SENDER_NAME = os.environ.get('MAIL_SENDER_NAME', 'Dirassati App')
+    REFRESH_TOKEN_EXPIRES = int (os.getenv("REFRESH_TOKEN_EXPIRES", 604800))
