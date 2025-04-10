@@ -2,6 +2,7 @@
 
 class AuthError(Exception):
     """Base exception for authentication errors."""
+
     status_code = 400 # Default status code
 
 class InvalidCredentialsError(AuthError):
@@ -22,4 +23,7 @@ class UserNotFoundError(AuthError):
 
 class MissingDataError(AuthError):
     """Raised when required data is missing from the request."""
-    status_code = 400
+    status_code = 405
+class InvalidRefreshTokenError(AuthError):
+    """Raised when the refresh token is invalid or expired."""
+    status_code = 406

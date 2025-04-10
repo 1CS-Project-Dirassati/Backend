@@ -6,9 +6,10 @@ from madrassati.extensions import flask_limiter
 from . import auth_ns
 #import business logic
 from .views import (
-    login_user,
+    login,
     initiate_registration,
     complete_registration,
+    refresh_token,
     request_password_reset,
     reset_password_with_otp
 )
@@ -31,7 +32,18 @@ login_payload_model = auth_ns.model("LoginPayload", {
 })
 # login response model
 token_model = auth_ns.model("TokenModel", {
-    "token": fields.String(description="authentification JWT", required=True),
+    "message": fields.String(description="Message", required=True),
+    "access-token": fields.String(description="access token (to be saved in local storage)", required=True),
+    "refresh-token": fields.String(description="refresh token (to be saved in secure storage/http cookie)", required=True),
+})
+# token refresh payload model
+token_refresh_payload_model = auth_ns.model("TokenRefreshPayload", {
+    "refresh-token": fields.String(description="refresh token",required=True),
+})
+# token refresh response model
+token_refresh_response_model = auth_ns.model("TokenRefreshResponse", {
+    "message": fields.String(description="Message", required=True),
+    "access-token": fields.String(description="access token (to be saved in local storage)", required=True),
 })
 
 # registration payload model
@@ -65,7 +77,7 @@ def handle_auth_exceptions(error):
 @auth_ns.route('/login')
 class LoginResource(Resource):
     method_decorators = [flask_limiter.limit("5 per minute")]
-    @auth_ns.doc('user_login', description='Authenticate a user and receive a JWT token.')
+    @auth_ns.doc('user_login', description='Authenticate a user and receive an access and refresh token.')
     @auth_ns.expect(login_payload_model, validate=True)
     @auth_ns.response(200, 'Login successful', token_model)
     @auth_ns.response(400, 'Invalid input data', error_model)
@@ -76,7 +88,7 @@ class LoginResource(Resource):
         data = auth_ns.payload # Option 2: gets validated data from expect(model)
         try:
             # Call the business logic function from views.py
-            result = login_user(data['email'], data['password'])
+            result = login(data['email'], data['password'])
             return result, 200 # RESTX automatically marshals based on response decorator
         except AuthError as e:
              # Let the namespace error handler catch this
@@ -85,6 +97,24 @@ class LoginResource(Resource):
              # Catch unexpected errors
              auth_ns.abort(500, f"An unexpected error occurred: {e}")
 
+@auth_ns.route('/refresh-token')
+class RefreshTokenResource(Resource):
+    method_decorators = [flask_limiter.limit("5 per minute")]
+    @auth_ns.doc('refresh_token', description='Refresh the access token using the refresh token.')
+    @auth_ns.expect(token_refresh_payload_model, validate=True)
+    @auth_ns.response(200, 'Token refreshed successfully', token_refresh_response_model)
+    @auth_ns.response(400, 'Invalid input data', error_model)
+    @auth_ns.response(406, 'Invalid or expired refresh token', error_model)
+    def post(self):
+        """handles refreshing the access token."""
+        data = auth_ns.payload
+        try:
+            result = refresh_token (data['refresh-token'])
+            return result, 200
+        except AuthError as e:
+            raise e
+        except Exception as e:
+             auth_ns.abort(500, f"An unexpected error occurred: {e}")
 @auth_ns.route('/register')
 class RegisterResource(Resource):
     method_decorators = [flask_limiter.limit("3 per minute")]
