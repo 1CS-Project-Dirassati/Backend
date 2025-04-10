@@ -1,7 +1,6 @@
 # madrassati/auth/utils.py
 from typing import Optional, Dict, Any # Added Dict, Any for type hinting
 import json
-# from fernet import Fernet # Removed Fernet
 import hashlib
 import random
 from datetime import datetime, timezone, timedelta
@@ -11,9 +10,6 @@ from madrassati.config import Config
 from madrassati.extensions import redis_client
 from typing import Optional # Added for type hinting
 
-# --- Constants ---
-OTP_EXPIRATION_MINUTES = 10
-# No Fernet cipher_suite needed anymore
 
 # --- JWT Functions ---
 def generate_access_token(user_id: int) -> str:
@@ -190,7 +186,7 @@ def revoke_token(token_key_hash: str) -> bool: # Renamed arg for clarity
 def generate_and_store_otp(phone_number: str) -> int:
     """Generates a 5-digit OTP, stores it in Redis, and returns the OTP."""
     otp_code = random.randint(10000, 99999)
-    expiration_time = timedelta(minutes=OTP_EXPIRATION_MINUTES)
+    expiration_time = timedelta(minutes=Config.OTP_EXPIRATION_MINUTES)
     redis_key = f"otp:{phone_number}"
 
     # Store OTP as string

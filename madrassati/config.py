@@ -5,6 +5,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///madrassati.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    OTP_EXPIRATION_MINUTES = 10
     ERROR_INCLUDE_MESSAGE=False  # Don't include error messages in responses
      # JWT expiration time (in seconds)
     JWT_EXPIRATION = int(os.getenv("JWT_EXPIRATION", 3600))  # Default: 1 hour

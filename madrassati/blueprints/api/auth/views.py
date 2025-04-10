@@ -4,8 +4,10 @@ from datetime import  datetime ,timezone , timedelta
 from flask import current_app
 
 from madrassati.models import User
-from madrassati.extensions import db , redis_client
-from .utils import find_user_by_email,retrieve_token, generate_access_token,generate_refresh_token, generate_and_store_otp, store_token, verify_stored_otp , OTP_EXPIRATION_MINUTES , find_user_by_email
+from madrassati.extensions import db
+from .utils import find_user_by_email,retrieve_token, generate_access_token,generate_refresh_token, generate_and_store_otp, store_token, verify_stored_otp , find_user_by_email
+
+from madrassati.config import Config
 from madrassati.services import send_email
 from .errors import MissingDataError, InvalidCredentialsError, InvalidRefreshTokenError, UserNotFoundError, UserAlreadyExistsError, InvalidOtpError # Assuming you create these custom exceptions in errors.py
 
@@ -109,7 +111,7 @@ def initiate_registration(email, password, phone_number):
     template = "email/otp_email" # Prefix for otp_email.html / otp_email.txt
     context = {
         "otp_code": otp_code,
-        "expiration_minutes": OTP_EXPIRATION_MINUTES
+        "expiration_minutes": Config.OTP_EXPIRATION_MINUTES
     }
     email_sent = send_email(to_email=email, subject=subject, template_prefix=template, context=context)
     if not email_sent:
