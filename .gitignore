@@ -14,6 +14,9 @@ venv/
 # Flask instance folder (contains local SQLite DB & uploads)
 instance/
 
+# Migrations folder for now
+migrations/
+
 # Logs and debugging
 logs/
 *.log

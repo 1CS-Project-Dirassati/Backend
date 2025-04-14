@@ -1,12 +1,12 @@
 # madrassati/auth/routes.py
-from flask import request
-from flask_restx import Resource , fields , reqparse
+from flask_restx import Resource , fields
 from madrassati.extensions import flask_limiter
 #import the auth namespace
 from . import auth_ns
 #import business logic
 from .views import (
     login,
+    logout_user,
     initiate_registration,
     complete_registration,
     refresh_token,
@@ -29,6 +29,10 @@ error_model = auth_ns.model("ErrorModel", {
 login_payload_model = auth_ns.model("LoginPayload", {
     "email": fields.String(description="User email", required=True),
     "password": fields.String(description="User password", required=True)
+})
+logout_payload_model = auth_ns.model("LogoutPayload", {
+    "access-token": fields.String(description="access token", required=True),
+    "refresh-token": fields.String(description="refresh token", required=True)
 })
 # login response model
 token_model = auth_ns.model("TokenModel", {
@@ -96,7 +100,34 @@ class LoginResource(Resource):
         except Exception as e:
              # Catch unexpected errors
              auth_ns.abort(500, f"An unexpected error occurred: {e}")
+@auth_ns.route('/logout')
+class LogoutResource(Resource):
+    method_decorators = [flask_limiter.limit("10 per minute")] # Adjust limit as needed
 
+    @auth_ns.doc('user_logout', description='Log out the user by invalidating the refresh token.')
+    @auth_ns.expect(logout_payload_model, validate=True)
+    @auth_ns.response(200, 'Logout successful', message_model)
+    @auth_ns.response(400, 'Invalid input data', error_model)
+    # No 401/404 needed - if the token is invalid/not found, logout effectively succeeded.
+    def post(self):
+        """Handles user logout by revoking the refresh token."""
+        data = auth_ns.payload
+        try:
+            # Extract the refresh token (access token is ignored server-side for revoke)
+            refresh_token_str = data.get('refresh-token')
+            if not refresh_token_str:
+                # Should be caught by expect validation, but good practice
+                raise MissingDataError("Refresh token is required.")
+
+            # Call the business logic function from views.py
+            result = logout_user(refresh_token_str)
+            # Always return success, even if token was already invalid/revoked
+            return result, 200
+        except AuthError as e: # Catch specific errors like MissingDataError if needed
+            raise e
+        except Exception as e:
+            # Catch unexpected errors during the process
+            auth_ns.abort(500, f"An unexpected error occurred during logout: {e}")
 @auth_ns.route('/refresh-token')
 class RefreshTokenResource(Resource):
     method_decorators = [flask_limiter.limit("5 per minute")]
