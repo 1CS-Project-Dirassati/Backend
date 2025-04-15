@@ -54,8 +54,10 @@ def login(email, password):
             seconds=current_app.config["REFRESH_TOKEN_EXPIRES"]
         )
         # store the refresh token securely
-        refresh_token_hash= store_refresh_token(user.id, refresh_token, expires_at)
-        access_token = generate_access_token(user.id,refresh_token_hash)  # Generate access token
+        refresh_token_hash = store_refresh_token(user.id, refresh_token, expires_at)
+        access_token = generate_access_token(
+            user.id, refresh_token_hash
+        )  # Generate access token
 
         return (
             {
@@ -72,6 +74,8 @@ def login(email, password):
         return (
             {"error": "Failed to generate authentication tokens"}
         ), 500  # Internal Server Error
+
+
 def logout_user(refresh_token_str: str) -> dict:
     """
     Logs out the user by revoking their refresh token.
@@ -109,9 +113,12 @@ def logout_user(refresh_token_str: str) -> dict:
     #     raise StorageError("Logout failed due to a storage issue.")
     except Exception as e:
         # Log the unexpected error
-        current_app.logger.error(f"Unexpected error during logout token revocation: {e}", exc_info=True)
+        current_app.logger.error(
+            f"Unexpected error during logout token revocation: {e}", exc_info=True
+        )
         # Raise the specific internal error
         raise InternalAuthError("An error occurred during logout.")
+
 
 def refresh_token(refresh_token):
     """
@@ -138,7 +145,7 @@ def refresh_token(refresh_token):
             print(user)
             if user:
                 # generate new access token
-                access_token = generate_access_token(user.id,refresh_token_hash)
+                access_token = generate_access_token(user.id, refresh_token_hash)
                 return ({"access_token": access_token}), 200
             else:
                 current_app.logger.warning(
@@ -226,7 +233,9 @@ def complete_registration(email, phone_number, otp_code, password):
 
     # OTP verified, now create the user
     hashed_password = generate_password_hash(password)
-    new_user = Parent(email=email, phone_number=phone_number, password_hash=hashed_password)
+    new_user = Parent(
+        email=email, phone_number=phone_number, password_hash=hashed_password
+    )
     db.session.add(new_user)
     db.session.commit()
 
@@ -249,13 +258,29 @@ def request_password_reset(email):
     user = Parent.query.filter_by(email=email).first()
     if not user:
         raise UserNotFoundError("Parent with this phone number not found.")
-# pay attention to this later as this function for password reset does should not use the same function as sign up
-    otp = generate_and_store_otp(email)  # OTP is generated and stored
+    # pay attention to this later as this function for password reset does should not use the same function as sign up
+    otp_code = generate_and_store_otp(email)  # OTP is generated and stored
 
-    return {"message": f"OTP sent:otp:{otp}. Please verify to reset password."}
+    # --- Send OTP Email ---
+    subject = f"Madrassati Registration - Your OTP Code ({otp_code})"  # Include OTP in subject for easy finding
+    template = "email/otp_email"  # Prefix for otp_email.html / otp_email.txt
+    context = {
+        "otp_code": otp_code,
+        "expiration_minutes": Config.OTP_EXPIRATION_MINUTES,
+    }
+    email_sent = send_email(
+        to_email=email, subject=subject, template_prefix=template, context=context
+    )
+    if not email_sent:
+        # Log the failure but proceed with registration initiation
+        # The user can still verify via phone OTP stored in Redis
+        current_app.logger.warning(
+            f"Failed to send OTP email to {email} during registration initiation."
+        )
+    return {"message": f"OTP sent:otp:{otp_code}. Please verify to reset password."}
 
 
-def reset_password_with_otp(phone_number, otp_code, new_password):
+def reset_password_with_otp(email, otp_code, new_password):
     """
     Verifies the OTP and resets the user's password.
 
@@ -271,10 +296,10 @@ def reset_password_with_otp(phone_number, otp_code, new_password):
         InvalidOtpError: If the provided OTP is invalid or expired.
         ParentNotFoundError: If no user is found with the given phone number (should be rare here if OTP was valid).
     """
-    if not verify_stored_otp(phone_number, otp_code):
+    if not verify_stored_otp(email, otp_code):
         raise InvalidOtpError("Invalid or expired OTP")
 
-    user = Parent.query.filter_by(phoneNumber=phone_number).first()
+    user = Parent.query.filter_by(email=email).first()
     # This check is slightly redundant if verify_stored_otp requires the user exists implicitly,
     # but good practice to ensure the user exists before updating.
     if not user:
