@@ -15,7 +15,6 @@ class Config:
     JWT_EXPIRATION = int(os.getenv("JWT_EXPIRATION", 3600))  # Default: 1 hour
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")  # Default: HS256
     # Create a Redis instance using redislite
-    REDIS_DB_PATH = os.path.join("/tmp/my_redis.db")
     # --- Mailjet Configuration ---
     # MAILJET_API_KEY = os.environ.get('MAILJET_API_KEY')
     # MAILJET_SECRET_KEY = os.environ.get('MAILJET_SECRET_KEY')

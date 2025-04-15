@@ -212,9 +212,9 @@ class Group(db.Model):
     )
     students = db.relationship("Student", back_populates="group")
     sessions = db.relationship("Session", back_populates="group")
-    semesters = db.relationship(
-        "Semester", back_populates="group"
-    )  # If Semester *must* link to group
+    # semesters = db.relationship(
+    #    "Semester", back_populates="group"
+    # )  # If Semester *must* link to group
 
     def __repr__(self):
         return f"<Group id={self.id} name={self.name} level_id={self.level_id}>"

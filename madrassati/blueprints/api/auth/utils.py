@@ -92,7 +92,11 @@ def retrieve_token(provided_refresh_token: str) -> Optional[Dict[str, Any]]:
         if not token_data_bytes:
             return None  # Token not found
 
-        token_data_str = token_data_bytes.decode("utf-8") if isinstance(token_data_bytes, bytes) else str(token_data_bytes)
+        token_data_str = (
+            token_data_bytes.decode("utf-8")
+            if isinstance(token_data_bytes, bytes)
+            else str(token_data_bytes)
+        )
         token_data = json.loads(token_data_str)
 
         user_id = token_data.get("user_id")
@@ -102,10 +106,10 @@ def retrieve_token(provided_refresh_token: str) -> Optional[Dict[str, Any]]:
         if not all([user_id, stored_verification_hash, expires_at_iso]):
             return None  # Malformed data
 
-        provided_verification_hash = generate_password_hash(
-            provided_refresh_token
-        )
-        if not check_password_hash(provided_verification_hash, stored_verification_hash):
+        provided_verification_hash = generate_password_hash(provided_refresh_token)
+        if not check_password_hash(
+            provided_verification_hash, stored_verification_hash
+        ):
             return None  # Token doesn't match stored hash
 
         expires_at = datetime.fromisoformat(expires_at_iso)
@@ -156,6 +160,8 @@ def revoke_all_tokens(user_id: int) -> bool:
 
     redis_client.delete(redis_key)
     return True  # Tokens revoked successfully
+
+
 def revoke_token(token_key_hash: str) -> bool:
     """
     Remove a specific refresh token reference from Redis based on its key hash.
@@ -172,7 +178,11 @@ def revoke_token(token_key_hash: str) -> bool:
     user_id_to_clean = None
     if token_data_bytes:
         try:
-            token_data_str = token_data_bytes.decode("utf-8") if isinstance(token_data_bytes, bytes) else str(token_data_bytes)
+            token_data_str = (
+                token_data_bytes.decode("utf-8")
+                if isinstance(token_data_bytes, bytes)
+                else str(token_data_bytes)
+            )
             token_data = json.loads(token_data_str)
             user_id_to_clean = token_data.get("user_id")
         except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
@@ -188,11 +198,13 @@ def revoke_token(token_key_hash: str) -> bool:
         else str(deleted_count)
     )
 
-    return int(result ) > 0
+    return int(result) > 0
 
 
 # --- OTP Functions ---
-def generate_and_store_otp(phone_number: str, ) -> int:
+def generate_and_store_otp(
+    phone_number: str,
+) -> int:
     """Generates a 5-digit OTP, stores it in Redis, and returns the OTP."""
     otp_code = random.randint(10000, 99999)
     expiration_time = timedelta(minutes=Config.OTP_EXPIRATION_MINUTES)
@@ -214,7 +226,11 @@ def verify_stored_otp(phone_number: str, submitted_otp: str) -> bool:
         return False  # OTP not found or expired
 
     try:
-        stored_otp = stored_otp_bytes.decode("utf-8") if isinstance(stored_otp_bytes, bytes) else str(stored_otp_bytes)
+        stored_otp = (
+            stored_otp_bytes.decode("utf-8")
+            if isinstance(stored_otp_bytes, bytes)
+            else str(stored_otp_bytes)
+        )
     except UnicodeDecodeError:
         return False  # Should not happen if stored correctly, but handle defensively
 

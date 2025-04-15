@@ -10,11 +10,12 @@ dependencies = [
     "pyjwt",
     "flask-bcrypt",
     "flask-limiter",
-    "redislite",
+    "fakeredis",
     "asgiref",
     "flask-restx",
     "mailjet-rest",
     "Fernet",
+    "flask-redis",
 
 ]
 
