@@ -212,9 +212,17 @@ class Group(db.Model):
     )
     students = db.relationship("Student", back_populates="group")
     sessions = db.relationship("Session", back_populates="group")
+    semesters = db.relationship(
+        "Semester", back_populates="group"
+    )  # If Semester *must* link to group
 
     def __repr__(self):
         return f"<Group id={self.id} name={self.name} level_id={self.level_id}>"
+
+    def __init__(self, name, level_id):
+        """Initializes a Group instance."""
+        self.name = name
+        self.level_id = level_id
 
 
 class Level(db.Model):
@@ -376,8 +384,7 @@ class Session(db.Model):
         db.DateTime(timezone=True), nullable=False, index=True
     )  # Added index
     # Add end_time or duration?
-    # end_time = db.Column(db.DateTime(timezone=True), nullable=True)
-    week_number = db.Column(db.Integer, nullable=True)
+    weeks = db.Column(db.Integer, nullable=True)  # Example: Duration in minutes
 
     # Relationships defined using back_populates
     teacher = db.relationship("Teacher", back_populates="sessions")
@@ -391,6 +398,23 @@ class Session(db.Model):
 
     def __repr__(self):
         return f"<Session id={self.id} module_id={self.module_id} group_id={self.group_id} start={self.start_time}>"
+
+    def __init__(
+        self,
+        teacher_id,
+        module_id,
+        group_id,
+        semester_id,
+        start_time,
+        weeks=None,
+    ):
+        """Initializes a Session instance."""
+        self.teacher_id = teacher_id
+        self.module_id = module_id
+        self.group_id = group_id
+        self.semester_id = semester_id
+        self.start_time = start_time
+        self.weeks = weeks
 
 
 # Renamed from Absences to Absence, table name singular
@@ -483,10 +507,7 @@ class Semester(db.Model):
         db.Integer, db.ForeignKey("level.id"), nullable=False, index=True
     )
     start_date = db.Column(db.Date, nullable=False)  # Changed to Date
-    duration_weeks = db.Column(
-        db.Integer, nullable=False
-    )  # Added end_date instead of duration
-    # duration = db.Column(db.Integer, nullable=False)  # Duration in weeks (alternative)
+    duration = db.Column(db.Integer, nullable=False)  # Duration in weeks (alternative)
     created_at = db.Column(
         db.DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -506,3 +527,18 @@ class Semester(db.Model):
 
     def __repr__(self):
         return f"<Semester id={self.id} name={self.name} level_id={self.level_id}>"
+
+    # createParent =>id
+    # addChild =>id
+    # getParents => parents
+    # getParentsByPaid => parents
+    # getStudents =>students
+    # addGroup =>id
+    # getGroups =>groups
+    # assignStudentToGroup =>msg
+    # removeStudentFromGroup =>msg
+    # addTeacher =>id
+    # getTeachers =>teachers
+    # addSessions , modifyTrimestre =>id
+    # getSessionsByTrimestreId =>sessions + startTrimestre+ nmbrWeeks
+    # deleteSessions =>msg
