@@ -1,0 +1,103 @@
+# --- Python ---
+.env
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+# database bullshit
+migrations/
+data-dev.sqlite
+# old Readme
+READMEold.md
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+# Usually ignored
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.log
+
+# --- Virtual Environments ---
+venv/
+.venv/
+env/
+.env/
+ENV/
+# NOTE: You might want to track .env.example if you use environment files
+
+# --- IDEs / Editors ---
+# PyCharm
+.idea/
+*.iml
+
+# VSCode
+.vscode/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# --- OS Generated Files ---
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# --- Logs ---
+*.log
+logs/
+*.log.*
+
+# --- Configuration ---
+# If your config.py contains sensitive information or environment-specific
+# settings, uncomment the line below. Consider using environment variables
+# or a config.py.example file instead.
+# config.py
+
+# --- Other ---
+# If you have other build artifacts or temporary files specific to your project, add them here.
