@@ -1,23 +1,24 @@
 from flask import current_app
 
 from app.utils import err_resp, message, internal_err_resp
-from app.models.user import User
+from app.models.Admin import Admin
 
 
-class UserService:
+class AdminService:
+    """ Admin service class """
     @staticmethod
-    def get_user_data(username):
+    def get_user_data(email):
         """ Get user data by username """
-        if not (user := User.query.filter_by(username=username).first()):
+        if not (admin := Admin.query.filter_by(email=email).first()):
             return err_resp("User not found!", "user_404", 404)
 
         from .utils import load_data
 
         try:
-            user_data = load_data(user)
+            admin_data = load_data(admin)
 
             resp = message(True, "User data sent")
-            resp["user"] = user_data
+            resp["admin"] = admin_data
             return resp, 200
 
         except Exception as error:
