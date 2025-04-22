@@ -1,0 +1,709 @@
+===== controller.py =====
+from flask import request
+import logging
+from flask_restx import Resource
+from app.utils import validation_error
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+
+# Auth modules
+from .service import AuthService
+from .dto import AuthDto
+from .utils import LoginSchema, LogoutSchema, RefreshSchema, RegisterSchema, OtpSchema, ForgotSchema
+
+logging.basicConfig(
+    level=logging.DEBUG,  # Change to INFO or WARNING in production
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+ACCESS_EXPIRES = 60 * 60 * 24 * 7  # 7 days
+
+api = AuthDto.api
+auth_success = AuthDto.auth_success
+
+login_schema = LoginSchema()
+register_schema = RegisterSchema()
+refresh_schema = RefreshSchema()
+otp_schema = OtpSchema()
+logout_schema = LogoutSchema()
+forgot_schema = ForgotSchema()
+
+
+@api.route("/login")
+class AuthLogin(Resource):
+    """User login endpoint
+    User registers then receives the user's information and access_token
+    """
+
+    auth_login = AuthDto.auth_login
+
+    @api.doc(
+        "Auth login",
+        responses={
+            200: ("Logged in", auth_success),
+            400: "Validations failed.",
+            403: "Incorrect password or incomplete credentials.",
+            404: "Email does not match any account.",
+        },
+    )
+    @api.expect(auth_login, validate=True)
+    def post(self):
+        """Login using email and password"""
+        # Grab the json data
+        login_data = request.get_json()
+        # Validate data
+        if errors := login_schema.validate(login_data):
+            return validation_error(False, errors), 400
+
+        return AuthService.login(login_data)
+
+
+@api.route("/logout")
+class AuthLogout(Resource):
+    """User logout endpoint
+    User logs out and the access token is revoked
+    """
+
+    auth_logout = AuthDto.auth_logout
+
+    @api.doc(
+        "Auth logout",
+        responses={
+            200: ("Successfully logged out.", auth_success),
+            400: "Malformed data or validations failed.",
+            401: "Invalid token.",
+        },
+    )
+    @api.expect(auth_logout, validate=True)
+    @jwt_required(verify_type=False)
+    def delete(self):
+        token = get_jwt()
+        # commenting out the validation part for the schema as i still dont
+        # dont know how to validate headers of requests
+        #logout_data = request.get_json()
+        #if errors := logout_schema.validate(logout_data):
+        #    return validation_error(False, errors), 400
+        # Validate token
+        return AuthService.logout(token)
+
+
+
+
+@api.route("/register")
+class AuthRegister(Resource):
+    """User register endpoint
+    User registers then receives the user's information and access_token
+    """
+
+    auth_register = AuthDto.auth_register
+
+    @api.doc(
+        "Auth registration",
+        responses={
+            201: ("Successfully registered user.", auth_success),
+            400: "Malformed data or validations failed.",
+        },
+    )
+    @api.expect(auth_register, validate=True)
+    def post(self):
+        """User registration"""
+        # Grab the json data
+        register_data = request.get_json()
+
+        # Validate data
+        if errors := register_schema.validate(register_data):
+            return validation_error(False, errors), 400
+
+        return AuthService.register(register_data)
+@api.route("/forgot-password")
+class AuthForgotPassword(Resource):
+    """User forgot password endpoint
+    User requests a password reset link to be sent to their email
+    """
+
+    auth_forgot = AuthDto.auth_forgot
+
+    @api.doc(
+        "Auth forgot password",
+        responses={
+            200: ("Successfully sent password reset link.", auth_success),
+            400: "Malformed data or validations failed.",
+        },
+    )
+    @api.expect(auth_forgot, validate=True)
+    def post(self):
+        """Forgot password"""
+        # Grab the json data
+        forgot_data = request.get_json()
+        # Validate data
+        if errors := forgot_schema.validate(forgot_data):
+            return validation_error(False, errors), 400
+
+        return AuthService.forgot_password(forgot_data)
+
+
+@api.route("/verify-otp")
+class AuthVerifyOtp(Resource):
+    """User verify OTP endpoint
+    User verifies the OTP sent to their email
+    """
+
+    auth_verify_otp = AuthDto.auth_verify_otp
+
+    @api.doc(
+        "Auth verify OTP",
+        responses={
+            200: ("Successfully verified OTP.", auth_success),
+            400: "Malformed data or validations failed.",
+            401: "Invalid token.",
+        },
+    )
+    @api.expect(auth_verify_otp, validate=True)
+    def post(self):
+        """Verify OTP"""
+        # Grab the json data
+
+        otp_data = request.get_json()
+        # Validate otp_data
+        if errors := otp_schema.validate(otp_data):
+            return validation_error(False, errors), 400
+        return AuthService.verify_otp(otp_data)
+
+
+@api.route("/refresh")
+class AuthRefresh(Resource):
+    """User refresh token endpoint
+    User refreshes the access token using the refresh token
+    """
+
+    auth_refresh = AuthDto.auth_refresh
+
+    @api.doc(
+        "Auth refresh",
+        responses={
+            200: ("Successfully refreshed token.", auth_success),
+            400: "Malformed data or validations failed.",
+            401: "Invalid token.",
+        },
+    )
+    @api.expect(auth_refresh, validate=False)
+    @api.doc(security="Bearer")
+    @jwt_required(refresh=True)
+    def post(self):
+        """Refresh access token"""
+        # Grab the json data
+        identity = get_jwt_identity()
+
+        return AuthService.refresh(identity)
+
+
+===== dto.py =====
+from flask_restx import Namespace, fields
+
+
+class AuthDto:
+    api = Namespace(
+        "auth",
+        description="Authenticate and receive tokens.",
+        path="/auth",
+    )
+
+    user_obj = api.model(
+        "User object",
+        {
+            "email": fields.String,
+            "name": fields.String,
+            "username": fields.String,
+            "joined_date": fields.DateTime,
+            "role_id": fields.Integer,
+        },
+    )
+    auth_refresh = api.model(
+        "Refresh token",
+        {},
+    )
+
+    auth_login = api.model(
+        "Login data",
+        {
+            "email": fields.String(required=True, example="gulag@maserati.com"),
+            "password": fields.String(required=True, example="supersecretpassword"),
+            "role": fields.String(
+                required=True,
+                enum=["parent", "teacher", "admin", "student"],
+                description="Role of the user",
+            ),
+        },
+    )
+    auth_forgot = api.model(
+        "Forgot password data",
+        {
+            "email": fields.String(
+                required=True,
+                description="Email of the user",
+                example="gulag@maserati.com",
+            ),
+            "role": fields.String(
+                required=True,
+                enum=["parent", "teacher", "admin", "student"],
+                description="Role of the user",
+            ),
+        }
+            ),
+
+    auth_logout = api.model(
+        "Logout data",
+        {
+            "token": fields.String(
+                required=True,
+                description="Refresh/Access token to be revoked",
+                example="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            ),
+        },
+    )
+
+
+
+    auth_register = api.model(
+        "Registration data",
+        {
+            "email": fields.String(required=True, example="gulag@maserati.com"),
+            "password": fields.String(required=True, example="supersecretpassword"),
+            "role": fields.String(
+                required=True,
+                enum=["parent", "teacher", "admin", "student"],
+                description="Role of the user",
+            ),
+            "phone_number": fields.String(
+                required=True,
+                description="Phone number of the user",
+                example="+1234567890",
+            ),
+            "first_name": fields.String(example="John"),
+            "last_name": fields.String(example="Doe"),
+        },
+    )
+    auth_verify_otp = api.model(
+        "Verify OTP",
+        {
+            "otp": fields.String(required=True, example="123456"),
+            "email": fields.String(required=True, example="jane@jane.com"),
+            "context": fields.String(required=True, example="register"),
+        },
+    )
+
+    auth_success = api.model(
+        "Auth success response",
+        {
+            "status": fields.Boolean,
+            "message": fields.String,
+            "access_token": fields.String,
+            "refresh_token": fields.String(required=False),
+            "user": fields.Nested(user_obj),
+        },
+    )
+
+
+===== __init__.py =====
+from flask_restx import Api
+from flask import Blueprint
+
+# Import auth namespace
+from .controller import api as auth_ns
+
+authorizations = {"Bearer": {"type": "apiKey", "in": "header", "name": "Authorization"}}
+auth_bp = Blueprint("auth", __name__)
+
+auth = Api(
+    auth_bp,
+    title="Dirassati",
+    description="Authenticate and receive tokens.",
+    authorizations=authorizations,
+    security="Bearer",
+)
+
+# API namespaces
+auth.add_namespace(auth_ns)
+
+
+===== service.py =====
+import os
+from flask import  current_app
+from flask_jwt_extended import (
+    create_refresh_token,
+    create_access_token,
+)
+import json
+from werkzeug.security import generate_password_hash
+
+import random
+
+from app import db
+from app.utils import message, err_resp, internal_err_resp
+from app.models import Parent, Admin, Teacher, Student
+from app.models.Schemas import AdminSchema, ParentSchema, TeacherSchema, StudentSchema
+from app.extensions import redis_client
+from flask import current_app
+from flask_jwt_extended import get_jwt
+
+ACCESS_EXPIRES = 60 * 60 * 24 * 7  # 7 days
+schemas = {
+    "parent": ParentSchema(),
+    "teacher": TeacherSchema(),
+    "student": StudentSchema(),
+    "admin": AdminSchema(),
+}
+models = {
+    "parent": Parent,
+    "teacher": Teacher,
+    "student": Student,
+    "admin": Admin,
+}
+
+
+class AuthService:
+    @staticmethod
+    def login(data):
+        # Assign vars
+        email = data["email"]
+        password = data["password"]
+        role = data["role"]
+        print(role)
+        try:
+            # Fetch user data
+            if role not in models:
+                return err_resp(
+                    "Invalid role provided. Please use 'parent', 'teacher', or 'admin'.",
+                    "invalid_role",
+                    400,
+                )
+            user = models[role].query.filter_by(email=email).first()
+            if not user:
+                return err_resp(
+                    "The email you have entered does not match any account.",
+                    "email_404",
+                    404,
+                )
+
+            elif user and user.verify_password(password):
+                user_info = schemas[role].dump(user)
+
+                access_token = create_access_token(identity=user.id)
+
+                refresh_token = create_refresh_token(identity=str(user.id))
+                resp = message(True, "User has been logged in.")
+                resp["access_token"] = access_token
+                resp["refresh_token"] = refresh_token
+                resp["user"] = user_info
+                return resp
+
+            return err_resp(
+                "Failed to log in, password may be incorrect.", "password_invalid", 401
+            )
+
+        except Exception as error:
+            current_app.logger.error(error)
+            return internal_err_resp()
+
+    @staticmethod
+    def logout(token):
+        try:
+            jti = token["jti"]
+            ttype = token["type"]
+            redis_client.set(jti, "", ex=ACCESS_EXPIRES)
+
+            resp = message(True, f"{ttype.capitalize()} token has been revoked.")
+            return resp, 201
+        except:
+            return err_resp("Failed to log out.", "logout_failed", 500)
+
+    @staticmethod
+    def forgot_password(data):
+        email = data["email"]
+        role = data["role"]
+        # Check if the email is taken
+        if models[role].query.filter_by(email=email).first() is None:
+            return err_resp(
+                "The email you have entered does not match any account.",
+                "email_404",
+                404,
+            )
+        try:
+            if redis_client.get(
+                f"otp:{email}"
+            ):  # Check if OTP already exists for this email
+                return err_resp(
+                    "An OTP has already been sent to this email. Please check your inbox.",
+                    "otp_exists",
+                    403,
+                )
+
+            otp = random.randint(100000, 999999)
+            user_info = {}
+            user_info["email"] = email
+            info = [user_info, otp, role]
+            # Generate a random OTP
+            # Load the new user's info
+
+            redis_client.set(
+                f"otp:{email}",
+                json.dumps(info),
+                ex=current_app.config.get("OTP_EXPIRATION_TIME",300),
+
+            )
+
+            resp = message(True, "Otp has been sent to your email.")
+            return resp, 201
+        except Exception as error:
+            current_app.logger.error(error)
+            return internal_err_resp()
+
+    @staticmethod
+    def reset_password(data):
+        # Assign vars
+        email = data["email"]
+        otp = data["otp"]
+        password = data["password"]
+        # If valid, create the user in the database
+        try:
+
+            otp_entry = redis_client.getdel(f"otp:{email}")
+
+            if not otp_entry:
+                return err_resp("OTP has expired or is invalid.", "otp_invalid", 403)
+            otp_data = json.loads(otp_entry)
+            user_info = otp_data[0]
+            stored_otp = otp_data[1]
+            role = otp_data[2]
+            if int(stored_otp) != int(otp):
+                return err_resp("Invalid OTP.", "otp_invalid", 403)
+
+            user = models[role].query.filter_by(email=email).first()
+            if not user:
+                return err_resp(
+                    "The email you have entered does not match any account.",
+                    "email_404",
+                    404,
+                )
+
+            user.password = generate_password_hash(password)
+            db.session.commit()
+
+            resp = message(True, "Password has been reset.")
+            return resp, 201
+
+        except Exception as error:
+            current_app.logger.error(error)
+            return internal_err_resp()
+
+    @staticmethod
+    def register(data):
+        # Assign vars
+
+        ## Required values
+        email = data["email"]
+        password = data["password"]
+        role = data["role"]
+        phone_number = data["phone_number"]
+        first_name = data["first_name"]
+        last_name = data["last_name"]
+
+        if role == "admin":
+            return err_resp(
+                "Admin registration is not allowed.", "admin_registration", 403
+            )
+        # Check if the email is taken
+        if models[role].query.filter_by(email=email).first() is not None:
+            return err_resp("Email is already being used.", "email_taken", 403)
+        try:
+
+            if redis_client.get(
+                f"otp:{email}"
+            ):  # Check if OTP already exists for this email
+                return err_resp(
+                    "An OTP has already been sent to this email. Please check your inbox.",
+                    "otp_exists",
+                    403,
+                )
+
+            otp = random.randint(100000, 999999)
+            user_info = {}
+            user_info["email"] = email
+            user_info["password"] = generate_password_hash(password)
+            user_info["phone_number"] = phone_number
+            user_info["first_name"] = first_name
+            user_info["last_name"] = last_name
+            info = [user_info, otp, role]
+            # Generate a random OTP
+            # Load the new user's info
+
+            redis_client.set(
+                f"otp:{email}",
+                json.dumps(info),
+                ex=current_app.config.get("OTP_EXPIRATION_TIME",300),
+
+            )
+
+            resp = message(True, "Otp has been sent to your email.")
+            return resp, 201
+
+        except Exception as error:
+            current_app.logger.error(error)
+            return internal_err_resp()
+
+    @staticmethod
+    def verify_otp(data):
+        # Assign vars
+        email = data["email"]
+        otp = data["otp"]
+        # If valid, create the user in the database
+        try:
+
+            otp_entry = redis_client.getdel(f"otp:{email}")
+
+            if not otp_entry:
+                return err_resp("OTP has expired or is invalid.", "otp_invalid", 403)
+            otp_data = json.loads(otp_entry)
+            user_info = otp_data[0]
+            stored_otp = otp_data[1]
+            role = otp_data[2]
+            if int(stored_otp) != int(otp):
+                return err_resp("Invalid OTP.", "otp_invalid", 403)
+
+            new_user = schemas[role].load(user_info)
+
+            db.session.add(new_user)
+            db.session.commit()
+
+            access_token = create_access_token(identity=new_user.id)
+            refresh_token = create_refresh_token(identity=str(new_user.id))
+            resp = message(True, "User has been registered.")
+            resp["access_token"] = access_token
+            resp["refresh_token"] = refresh_token
+            return resp, 201
+
+        except Exception as error:
+            current_app.logger.error(error)
+            return internal_err_resp()
+
+    @staticmethod
+    def refresh(identity):
+        # Create a new access token using the identity from the refresh token
+        access_token = create_access_token(identity=identity)
+        resp = message(True, "User has been registered.")
+        resp["access_token"] = access_token
+        return resp
+
+
+===== utils.py =====
+# Validations with Marshmallow
+from marshmallow import Schema, fields
+from marshmallow.validate import Regexp, Length
+
+
+class LoginSchema(Schema):
+    """/auth/login [POST]
+
+    Parameters:
+    - Email
+    - Password (Str)
+    """
+
+    email = fields.Email(required=True, validate=[Length(max=64)])
+    password = fields.Str(required=True, validate=[Length(min=8, max=128)])
+    role = fields.Str(
+        required=True,
+        validate=[
+            Regexp(
+                r"^(parent|teacher|admin|student)$",
+                error="Role must be one of the following: parent, teacher, admin, or student.",
+            )
+        ],
+    )
+
+
+class RefreshSchema(Schema):
+    """/auth/refresh [POST]
+
+    Parameters:
+    - Refresh token
+    """
+
+
+class OtpSchema(Schema):
+    """/auth/otp [POST]
+
+    Parameters:
+    - Email
+    - OTP (Str)
+    """
+
+    email = fields.Email(required=True, validate=[Length(max=64)])
+    otp = fields.Str(required=True, validate=[Length(min=6, max=6)])
+
+
+class RegisterSchema(Schema):
+    """/auth/register [POST]
+
+    Parameters:
+    - Email
+    - Username (Str)
+    - Name (Str)
+    - Password (Str)
+    """
+
+    email = fields.Email(required=True, validate=[Length(max=64)])
+    password = fields.Str(required=True, validate=[Length(min=8, max=128)])
+    role = fields.Str(
+        required=True,
+        validate=[
+            Regexp(
+                r"^(parent|teacher|admin|student)$",
+                error="Role must be one of the following: parent, teacher, admin, or student.",
+            )
+        ],
+    )
+    phone_number = fields.Str(
+        validate=[
+            Regexp(
+                r"^\+?[1-9]\d{1,14}$",
+                error="Invalid phone number format.",
+            )
+        ]
+    )
+    first_name = fields.Str(
+        validate=[
+            Regexp(
+                r"^[A-Za-z]+((\s)?((\'|\-|\.)?([A-Za-z])+))*$",
+                error="Invalid first name!",
+            )
+        ]
+    )
+    last_name = fields.Str(
+        validate=[
+            Regexp(
+                r"^[A-Za-z]+((\s)?((\'|\-|\.)?([A-Za-z])+))*$",
+                error="invalid last name",
+            )
+        ]
+    )
+
+
+class LogoutSchema(Schema):
+    """/auth/logout [DELETE]
+
+    Parameters:
+    - Token
+    """
+
+    token = fields.Str(required=True, validate=[Length(min=1)])
+
+
+class ForgotSchema(Schema):
+    """/auth/forgot [POST]
+
+    Parameters:
+    - Email
+    """
+
+    email = fields.Email(required=True, validate=[Length(max=64)])
+
+
