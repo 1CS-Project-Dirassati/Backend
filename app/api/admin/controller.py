@@ -3,13 +3,14 @@ from flask_jwt_extended import jwt_required
 
 from .service import AdminService
 from .dto import AdminDto
+
 # still not implemented
-#api = UserDto.api
-#data_resp = UserDto.data_resp
+api = AdminDto.api
+# data_resp = UserDto.data_resp
 #
 #
-#@api.route("/<string:username>")
-#class UserGet(Resource):
+# @api.route("/<string:username>")
+# class UserGet(Resource):
 #    @api.doc(
 #        "Get a specific user",
 #        responses={

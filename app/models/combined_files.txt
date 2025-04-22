@@ -1,0 +1,577 @@
+--- Absence.py ---
+from app import db
+from datetime import datetime, timezone
+from . import Column, Model, relationship
+class Absence(Model):
+    """Records an absence of a student from a specific session."""
+    __tablename__ = "absence"
+    id = Column(db.Integer, primary_key=True)
+    student_id = Column(
+        db.Integer, db.ForeignKey("student.id"), nullable=False, index=True
+    )
+    session_id = Column(
+        db.Integer, db.ForeignKey("session.id"), nullable=False, index=True
+    )
+    justified = Column(db.Boolean, default=False, nullable=False)
+    reason = Column(db.String(255), nullable=True)
+    recorded_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    # Relationships
+    student = relationship("Student", back_populates="absences")
+    session = relationship("Session", back_populates="absences")
+    __table_args__ = (
+        db.UniqueConstraint("student_id", "session_id", name="_student_session_uc"),
+    )
+    def __repr__(self):
+        return f"<Absence id={self.id} student_id={self.student_id} session_id={self.session_id}>"
+--- Admin.py ---
+from app import db
+from datetime import datetime, timezone
+from . import Column, Model
+from werkzeug.security import generate_password_hash, check_password_hash
+class Admin(Model):
+    """Represents an administrator user with system privileges."""
+    __tablename__ = "admin"
+    id = Column(db.Integer, primary_key=True)
+    first_name = Column(db.String(50), nullable=True)
+    last_name = Column(db.String(50), nullable=True)
+    email = Column(db.String(100), unique=True, nullable=False, index=True)
+    password = Column(db.String(200), nullable=False)  # Store HASHED passwords
+    phone_number = Column(db.String(20), nullable=False)
+    is_super_admin = Column(db.Boolean, default=False, nullable=False)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    def __repr__(self):
+        return f"<Admin id={self.id} email={self.email}>"
+    @property
+    def password(self):
+        raise AttributeError("password is not a readable attribute")
+    @password.setter
+    def password(self, password):
+        self.password_hash = generate_password_hash(password)
+    def verify_password(self, password):
+        return check_password_hash(self.password_hash, password)
+--- Chat.py ---
+from app import db
+from datetime import datetime, timezone
+from . import Column, Model, relationship
+class Chat(Model):
+    """Chat conversation between parent and teacher"""
+    __tablename__ = "chat"
+    id = Column(db.Integer, primary_key=True)
+    parent_id = Column(db.Integer, db.ForeignKey("parent.id"), nullable=False)
+    teacher_id = Column(db.Integer, db.ForeignKey("teacher.id"), nullable=False)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    parent = relationship("Parent", foreign_keys=[parent_id])
+    teacher = relationship("Teacher", foreign_keys=[teacher_id])
+    messages = relationship(
+        "Message", back_populates="chat", cascade="all, delete-orphan"
+    )
+    def __repr__(self):
+        return f"<Chat id={self.id} parent_id={self.parent_id} teacher_id={self.teacher_id}>"
+--- Fee.py ---
+from app import db
+from datetime import datetime, timezone
+from . import Column, Model, relationship
+import enum
+# fee enum
+class FeeStatus(enum.Enum):
+    UNPAID = "unpaid"
+    PAID = "paid"
+    OVERDUE = "overdue"
+    CANCELLED = "cancelled"
+# fee model
+class Fee(Model):
+    """Represents a fee owed by a parent."""
+    __tablename__ = "fee"
+    id = Column(db.Integer, primary_key=True)
+    parent_id = Column(
+        db.Integer, db.ForeignKey("parent.id"), nullable=False, index=True
+    )
+    amount = Column(db.Float, nullable=False)
+    description = Column(db.String(255), nullable=True)
+    due_date = Column(db.Date, nullable=False)
+    status = Column(
+        db.Enum(FeeStatus, name="fee_status_enum"),
+        nullable=False,
+        default=FeeStatus.UNPAID,
+        index=True,
+    )
+    payment_date = Column(db.Date, nullable=True)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    parent = relationship("Parent", back_populates="fees")
+    def __repr__(self):
+        return f"<Fee id={self.id} amount={self.amount} status={self.status.value} parent_id={self.parent_id}>"
+--- Group.py ---
+from app import db
+from . import Column, Model, relationship
+class Group(Model):
+    """Represents a group of students within a specific level."""
+    __tablename__ = "group"
+    id = Column(db.Integer, primary_key=True)
+    name = Column(db.String(50), nullable=False)
+    level_id = Column(db.Integer, db.ForeignKey("level.id"), nullable=False, index=True)
+    # Relationships
+    level = relationship("Level", back_populates="groups")
+    students = relationship("Student", back_populates="group")
+    teachings = relationship(
+        "Teachings", back_populates="group", cascade="all, delete-orphan"
+    )
+    sessions = relationship("Session", back_populates="group")
+    def __repr__(self):
+        return f"<Group id={self.id} name={self.name} level_id={self.level_id}>"
+--- Lesson.py ---
+from app import db
+from datetime import datetime, timezone
+from . import Column, Model, relationship
+class Cours(Model):
+    """Course content/material"""
+    __tablename__ = "cours"
+    id = Column(db.Integer, primary_key=True)
+    title = Column(db.String(100), nullable=False)
+    content = Column(db.Text, nullable=True)
+    module_id = Column(db.Integer, db.ForeignKey("module.id"), nullable=False)
+    teacher_id = Column(db.Integer, db.ForeignKey("teacher.id"), nullable=False)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    module = relationship("Module", back_populates="cours")
+    teacher = relationship("Teacher", back_populates="cours")
+    def __repr__(self):
+        return f"<Cours id={self.id} title={self.title} module_id={self.module_id}>"
+--- Level.py ---
+from app import db
+from . import Column, Model, relationship
+class Level(Model):
+    """Represents an academic or study level."""
+    __tablename__ = "level"
+    id = Column(db.Integer, primary_key=True)
+    name = Column(db.String(50), nullable=False, unique=True)
+    description = Column(db.String(255), nullable=True)
+    # Relationships
+    groups = relationship("Group", back_populates="level")
+    teachingUnit = relationship(
+        "TeachingUnit", back_populates="level", cascade="all, delete-orphan"
+    )
+    students = relationship("Student", back_populates="level")
+    semesters = relationship("Semester", back_populates="level")
+    def __repr__(self):
+        return f"<Level id={self.id} name={self.name}>"
+--- Message.py ---
+from app import db
+from . import Column, Model, relationship
+from datetime import datetime, timezone
+class Message(Model):
+    """Chat message"""
+    __tablename__ = "message"
+    id = Column(db.Integer, primary_key=True)
+    chat_id = Column(db.Integer, db.ForeignKey("chat.id"), nullable=False)
+    sender_id = Column(db.Integer, nullable=False)  # ID of parent or teacher
+    is_teacher = Column(db.Boolean, nullable=False)  # True if sent by teacher
+    content = Column(db.Text, nullable=False)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    chat = relationship("Chat", back_populates="messages")
+    sender = relationship("Parent", foreign_keys=[sender_id])
+    def __repr__(self):
+        return (
+            f"<Message id={self.id} chat_id={self.chat_id} sender_id={self.sender_id}>"
+        )
+--- Module.py ---
+from app import db
+from . import Column, Model, relationship
+class Module(Model):
+    """Represents a subject or course module taught."""
+    __tablename__ = "module"
+    id = Column(db.Integer, primary_key=True)
+    name = Column(db.String(50), nullable=False)
+    description = Column(db.String(255), nullable=True)
+    teacher_id = Column(
+        db.Integer, db.ForeignKey("teacher.id"), nullable=False, index=True
+    )
+    # Relationships
+    teacher = relationship("Teacher", back_populates="modules")
+    level_associations = relationship(
+        "LevelModuleAssociation", back_populates="module", cascade="all, delete-orphan"
+    )
+    sessions = relationship("Session", back_populates="module")
+    cours = relationship("Cours", back_populates="module", cascade="all, delete-orphan")
+    notes = relationship("Note", back_populates="module", cascade="all, delete-orphan")
+    def __repr__(self):
+        return f"<Module id={self.id} name={self.name}>"
+--- Note.py ---
+from app import db
+from . import Column, Model, relationship
+from datetime import datetime, timezone
+class Note(Model):
+    """Student grade for a module"""
+    __tablename__ = "note"
+    id = Column(db.Integer, primary_key=True)
+    student_id = Column(db.Integer, db.ForeignKey("student.id"), nullable=False)
+    module_id = Column(db.Integer, db.ForeignKey("module.id"), nullable=False)
+    teacher_id = Column(db.Integer, db.ForeignKey("teacher.id"), nullable=False)
+    value = Column(db.Float, nullable=False)
+    comment = Column(db.Text, nullable=True)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    student = relationship("Student", back_populates="notes")
+    module = relationship("Module", back_populates="notes")
+    teacher = relationship("Teacher", back_populates="notes")
+    def __repr__(self):
+        return f"<Note id={self.id} student_id={self.student_id} module_id={self.module_id} value={self.value}>"
+--- Notification.py ---
+from app import db
+from datetime import datetime, timezone
+from . import Column, Model, relationship
+from enum import Enum
+class NotificationType(Enum):
+    SYSTEM = "system"
+    PAYMENT = "payment"
+    ATTENDANCE = "attendance"
+    MESSAGE = "message"
+class Notification(Model):
+    """System notification"""
+    __tablename__ = "notification"
+    id = Column(db.Integer, primary_key=True)
+    parent_id = Column(db.Integer, db.ForeignKey("parent.id"), nullable=False)
+    message = Column(db.Text, nullable=False)
+    notification_type = Column(db.Enum(NotificationType), nullable=False)
+    is_read = Column(db.Boolean, default=False)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    parent = relationship("Parent", back_populates="notifications")
+    def __repr__(self):
+        return f"<Notification id={self.id} parent_id={self.parent_id} type={self.notification_type}>"
+--- Parent.py ---
+from app import db
+from . import Column, Model, relationship
+from datetime import datetime, timezone
+from werkzeug.security import generate_password_hash, check_password_hash
+class Parent(Model):
+    """Represents a parent or guardian of one or more students."""
+    __tablename__ = "parent"
+    id = Column(db.Integer, primary_key=True)
+    first_name = Column(db.String(50), nullable=True)
+    last_name = Column(db.String(50), nullable=True)
+    email = Column(db.String(100), unique=True, nullable=False, index=True)
+    is_email_verified = Column(db.Boolean, default=False, nullable=False)
+    password = Column(db.String(200), nullable=False)
+    phone_number = Column(db.String(20), nullable=False)
+    is_phone_verified = Column(db.Boolean, default=False, nullable=False)
+    address = Column(db.String(255), nullable=True)
+    profile_picture = Column(
+        db.String(255), default="static/images/default_profile.png"
+    )
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    # Relationships
+    students = relationship(
+        "Student", back_populates="parent", cascade="all, delete-orphan"
+    )
+    fees = relationship("Fee", back_populates="parent", cascade="all, delete-orphan")
+    notifications = relationship(
+        "Notification", back_populates="parent", cascade="all, delete-orphan"
+    )
+    chats = relationship(
+        "Chat", foreign_keys="Chat.parent_id", back_populates="sender"
+    )
+    def __repr__(self):
+        return f"<Parent id={self.id} email={self.email}>"
+    def __init__(
+        self,
+        email,
+        password_hash,
+        phone_number,
+        first_name=None,
+        last_name=None,
+        address=None,
+    ):
+        self.email = email
+        self.password = password_hash
+        self.phone_number = phone_number
+        self.first_name = first_name
+        self.last_name = last_name
+        self.address = address
+    @property
+    def password(self):
+        raise AttributeError("password is not a readable attribute")
+    @password.setter
+    def password(self, password):
+        self.password_hash = generate_password_hash(password)
+    def verify_password(self, password):
+        return check_password_hash(self.password_hash, password)
+--- Salle.py ---
+from app import db
+from . import Column, Model, relationship
+class Salle(Model):
+    """Classroom/room for sessions"""
+    __tablename__ = "salle"
+    id = Column(db.Integer, primary_key=True)
+    name = Column(db.String(50), nullable=False, unique=True)
+    capacity = Column(db.Integer, nullable=False)
+    location = Column(db.String(100), nullable=True)
+    sessions = relationship("Session", back_populates="salle")
+    def __repr__(self):
+        return f"<Salle id={self.id} name={self.name}>"
+--- Semester.py ---
+from app import db
+from datetime import datetime, timezone
+from . import Column, Model, relationship
+class Semester(Model):
+    """Represents an academic semester, linked to a level."""
+    __tablename__ = "semester"
+    id = Column(db.Integer, primary_key=True)
+    name = Column(db.String(50), nullable=False)
+    level_id = Column(db.Integer, db.ForeignKey("level.id"), nullable=False, index=True)
+    start_date = Column(db.Date, nullable=False)
+    duration = Column(db.Integer, nullable=False)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    level = relationship("Level", back_populates="semesters")
+    sessions = relationship("Session", back_populates="semester")
+    def __repr__(self):
+        return f"<Semester id={self.id} name={self.name} level_id={self.level_id}>"
+--- Session.py ---
+from app import db
+from . import Column, Model, relationship
+class Session(Model):
+    """Represents a scheduled class session for a specific module and group."""
+    __tablename__ = "session"
+    id = Column(db.Integer, primary_key=True)
+    teacher_id = Column(db.Integer, db.ForeignKey("teacher.id"), nullable=False, index=True)
+    module_id = Column(db.Integer, db.ForeignKey("module.id"), nullable=False, index=True)
+    group_id = Column(db.Integer, db.ForeignKey("group.id"), nullable=False, index=True)
+    semester_id = Column(db.Integer, db.ForeignKey("semester.id"), nullable=False, index=True)
+    salle_id = Column(db.Integer, db.ForeignKey("salle.id"), nullable=True)
+    start_time = Column(db.DateTime(timezone=True), nullable=False, index=True)
+    weeks = Column(db.Integer, nullable=True)
+    # Relationships
+    teacher = relationship("Teacher", back_populates="sessions")
+    module = relationship("Module", back_populates="sessions")
+    group = relationship("Group", back_populates="sessions")
+    semester = relationship("Semester", back_populates="sessions")
+    salle = relationship("Salle", back_populates="sessions")
+    absences = relationship("Absence", back_populates="session", cascade="all, delete-orphan")
+    def __repr__(self):
+        return f"<Session id={self.id} module_id={self.module_id} group_id={self.group_id} start={self.start_time}>"
+--- Student.py ---
+from app import db
+from datetime import datetime, timezone
+from . import Column, Model, relationship
+from werkzeug.security import generate_password_hash, check_password_hash
+class Student(Model):
+    """Represents a student enrolled in the system."""
+    __tablename__ = "student"
+    id = Column(db.Integer, primary_key=True)
+    first_name = Column(db.String(50), nullable=True)
+    last_name = Column(db.String(50), nullable=True)
+    email = Column(db.String(100), unique=True, nullable=False, index=True)
+    password = Column(db.String(200), nullable=False)
+    level_id = Column(db.Integer, db.ForeignKey("level.id"), nullable=False, index=True)
+    group_id = Column(db.Integer, db.ForeignKey("group.id"), nullable=True, index=True)
+    is_approved = Column(db.Boolean, default=False, nullable=False)
+    parent_id = Column(
+        db.Integer, db.ForeignKey("parent.id"), nullable=False, index=True
+    )
+    docs_url = Column(db.String(255), nullable=True)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    # Relationships
+    parent = relationship("Parent", back_populates="students")
+    level = relationship("Level", back_populates="students")
+    group = relationship("Group", back_populates="students")
+    absences = relationship(
+        "Absence", back_populates="student", cascade="all, delete-orphan"
+    )
+    notes = relationship("Note", back_populates="student", cascade="all, delete-orphan")
+    def __repr__(self):
+        return f"<Student id={self.id} email={self.email} level_id={self.level_id} group_id={self.group_id}>"
+    def __init__(
+        self,
+        email,
+        password_hash,
+        level_id,
+        parent_id,
+        first_name=None,
+        last_name=None,
+        group_id=None,
+        docs_url=None,
+    ):
+        self.email = email
+        self.password = password_hash
+        self.level_id = level_id
+        self.parent_id = parent_id
+        self.group_id = group_id
+        self.first_name = first_name
+        self.last_name = last_name
+        self.docs_url = docs_url
+    @property
+    def password(self):
+        raise AttributeError("password is not a readable attribute")
+    @password.setter
+    def password(self, password):
+        self.password_hash = generate_password_hash(password)
+    def verify_password(self, password):
+        return check_password_hash(self.password_hash, password)
+--- Teacher.py ---
+from app import db
+from datetime import datetime, timezone
+from . import Column, Model, relationship
+from werkzeug.security import generate_password_hash, check_password_hash
+class Teacher(Model):
+    """Represents a teacher responsible for modules and groups."""
+    __tablename__ = "teacher"
+    id = Column(db.Integer, primary_key=True)
+    first_name = Column(db.String(50), nullable=True)
+    last_name = Column(db.String(50), nullable=True)
+    email = Column(db.String(100), unique=True, nullable=False, index=True)
+    password = Column(db.String(200), nullable=False)
+    phone_number = Column(db.String(20), nullable=False)
+    address = Column(db.String(255), nullable=True)
+    profile_picture = Column(
+        db.String(255), default="static/images/default_profile.png"
+    )
+    module_key = Column(db.String(100), nullable=True)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    # Relationships
+    modules = relationship("Module", back_populates="teacher")
+    assigned_groups = relationship(
+        "TeacherGroupAssociation",
+        back_populates="teacher",
+        cascade="all, delete-orphan",
+    )
+    sessions = relationship("Session", back_populates="teacher")
+    cours = relationship(
+        "Cours", back_populates="teacher", cascade="all, delete-orphan"
+    )
+    notes = relationship("Note", back_populates="teacher", cascade="all, delete-orphan")
+    sent_messages = relationship(
+        "Message", foreign_keys="Message.sender_id", back_populates="sender"
+    )
+    def __repr__(self):
+        return f"<Teacher id={self.id} email={self.email}>"
+    def __init__(
+        self,
+        email,
+        password_hash,
+        phone_number,
+        first_name=None,
+        last_name=None,
+        address=None,
+        module_key=None,
+    ):
+        self.email = email
+        self.password = password_hash
+        self.phone_number = phone_number
+        self.first_name = first_name
+        self.last_name = last_name
+        self.address = address
+        self.module_key = module_key
+    @property
+    def password(self):
+        raise AttributeError("password is not a readable attribute")
+    @password.setter
+    def password(self, password):
+        self.password_hash = generate_password_hash(password)
+    def verify_password(self, password):
+        return check_password_hash(self.password_hash, password)
+--- Teachings.py ---
+from app import db
+from . import Column, Model, relationship
+class Teachings(Model):
+    """Association table linking Teachers to the Groups they teach (Many-to-Many)."""
+    __tablename__ = "teacher_group_association"
+    teacher_id = Column(db.Integer, db.ForeignKey("teacher.id"), index=True)
+    group_id = Column(db.Integer, db.ForeignKey("group.id"), index=True)
+    __table_args__ = (db.PrimaryKeyConstraint("teacher_id", "group_id"),)
+    teacher = relationship("Teacher", back_populates="assigned_groups")
+    group = relationship("Group", back_populates="teacher_associations")
+    def __repr__(self):
+        return f"<teachings teacher_id={self.teacher_id} group_id={self.group_id}>"
+--- TeachingUnit.py ---
+from app import db
+from . import Column, Model, relationship
+class TeachingUnit(Model):
+    """Association table linking Levels to the Modules taught in them (Many-to-Many)."""
+    __tablename__ = "level_module_association"
+    level_id = Column(db.Integer, db.ForeignKey("level.id"), index=True)
+    module_id = Column(db.Integer, db.ForeignKey("module.id"), index=True)
+    __table_args__ = (db.PrimaryKeyConstraint("level_id", "module_id"),)
+    level = relationship("Level", back_populates="module_associations")
+    module = relationship("Module", back_populates="level_associations")
+    def __repr__(self):
+        return f"<TeachingUnit level_id={self.level_id} module_id={self.module_id}>"

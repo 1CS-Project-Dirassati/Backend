@@ -4,7 +4,7 @@ from marshmallow.validate import Regexp, Length
 
 
 class LoginSchema(Schema):
-    """ /auth/login [POST]
+    """/auth/login [POST]
 
     Parameters:
     - Email
@@ -13,10 +13,28 @@ class LoginSchema(Schema):
 
     email = fields.Email(required=True, validate=[Length(max=64)])
     password = fields.Str(required=True, validate=[Length(min=8, max=128)])
+    role = fields.Str(
+        required=True,
+        validate=[
+            Regexp(
+                r"^(parent|teacher|admin|student)$",
+                error="Role must be one of the following: parent, teacher, admin, or student.",
+            )
+        ],
+    )
+
+
+class RefreshSchema(Schema):
+    """/auth/refresh [POST]
+
+    Parameters:
+    - Refresh token
+    """
+
 
 
 class RegisterSchema(Schema):
-    """ /auth/register [POST]
+    """/auth/register [POST]
 
     Parameters:
     - Email
@@ -39,8 +57,26 @@ class RegisterSchema(Schema):
     name = fields.Str(
         validate=[
             Regexp(
-                r"^[A-Za-z]+((\s)?((\'|\-|\.)?([A-Za-z])+))*$", error="Invalid name!",
+                r"^[A-Za-z]+((\s)?((\'|\-|\.)?([A-Za-z])+))*$",
+                error="Invalid name!",
             )
         ]
     )
     password = fields.Str(required=True, validate=[Length(min=8, max=128)])
+    phone_number = fields.Str(
+        validate=[
+            Regexp(
+                r"^\+?[1-9]\d{1,14}$",
+                error="Invalid phone number format.",
+            )
+        ]
+    )
+    role = fields.Str(
+        required=True,
+        validate=[
+            Regexp(
+                r"^(parent|teacher|admin|student)$",
+                error="Role must be one of the following: parent, teacher, admin, or student.",
+            )
+        ],
+    )

@@ -1,6 +1,7 @@
 from app import db
 from datetime import datetime, timezone
 from . import Column, Model
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 class Admin(Model):
@@ -29,3 +30,14 @@ class Admin(Model):
 
     def __repr__(self):
         return f"<Admin id={self.id} email={self.email}>"
+
+    @property
+    def password(self):
+        raise AttributeError("password is not a readable attribute")
+
+    @password.setter
+    def password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def verify_password(self, password):
+        return check_password_hash(self.password_hash, password)

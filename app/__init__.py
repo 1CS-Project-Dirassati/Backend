@@ -1,4 +1,4 @@
-""" Top level module
+"""Top level module
 
 This module:
 

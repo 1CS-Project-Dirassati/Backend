@@ -2,7 +2,11 @@ from flask_restx import Namespace, fields
 
 
 class AuthDto:
-    api = Namespace("auth", description="Authenticate and receive tokens.")
+    api = Namespace(
+        "auth",
+        description="Authenticate and receive tokens.",
+        path="/auth",
+    )
 
     user_obj = api.model(
         "User object",
@@ -20,6 +24,16 @@ class AuthDto:
         {
             "email": fields.String(required=True),
             "password": fields.String(required=True),
+            "role": fields.String(
+                required=True,
+                enum=["parent", "teacher", "admin", "student"],
+                description="Role of the user",
+            ),
+        },
+    )
+    auth_refresh = api.model(
+        "Refresh token",
+        {
         },
     )
 
@@ -27,7 +41,11 @@ class AuthDto:
         "Registration data",
         {
             "email": fields.String(required=True),
-            "username": fields.String(required=True),
+            "role": fields.String(
+                required=True,
+                enum=["parent", "teacher", "admin", "student"],
+                description="Role of the user",
+            ),
             # Name is optional
             "name": fields.String,
             "password": fields.String(required=True),

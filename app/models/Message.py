@@ -1,27 +1,24 @@
 from app import db
+from datetime import datetime, timezone
 from . import Column, Model, relationship
 
+class Message(Model):
+    """Chat message"""
 
-class Module(Model):
-    """Represents a subject or course module taught."""
-
-    __tablename__ = "module"
+    __tablename__ = "message"
 
     id = Column(db.Integer, primary_key=True)
-    name = Column(db.String(50), nullable=False)
-    description = Column(db.String(255), nullable=True)
-    teacher_id = Column(
-        db.Integer, db.ForeignKey("teacher.id"), nullable=False, index=True
+    chat_id = Column(db.Integer, db.ForeignKey("chat.id"), nullable=False)
+    sender_id = Column(db.Integer, nullable=False)     # ID of parent or teacher
+    content = Column(db.Text, nullable=False)
+    created_at = Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
 
-    # Relationships
-    teacher = relationship("Teacher", back_populates="modules")
-    level_associations = relationship(
-        "LevelModuleAssociation", back_populates="module", cascade="all, delete-orphan"
-    )
-    sessions = relationship("Session", back_populates="module")
-    cours = relationship("Cours", back_populates="module", cascade="all, delete-orphan")
-    notes = relationship("Note", back_populates="module", cascade="all, delete-orphan")
+    chat = relationship("Chat", back_populates="messages")
 
     def __repr__(self):
-        return f"<Module id={self.id} name={self.name}>"
+        return f"<Message id={self.id} chat_id={self.chat_id} sender_id={self.sender_id}>"
+

@@ -1,6 +1,7 @@
 from app import db
 from datetime import datetime, timezone
 from . import Column, Model, relationship
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 class Teacher(Model):
@@ -34,7 +35,7 @@ class Teacher(Model):
     # Relationships
     modules = relationship("Module", back_populates="teacher")
     assigned_groups = relationship(
-        "TeacherGroupAssociation",
+        "Teachings",
         back_populates="teacher",
         cascade="all, delete-orphan",
     )
@@ -43,9 +44,6 @@ class Teacher(Model):
         "Cours", back_populates="teacher", cascade="all, delete-orphan"
     )
     notes = relationship("Note", back_populates="teacher", cascade="all, delete-orphan")
-    sent_messages = relationship(
-        "Message", foreign_keys="Message.sender_id", back_populates="sender"
-    )
 
     def __repr__(self):
         return f"<Teacher id={self.id} email={self.email}>"
@@ -67,3 +65,14 @@ class Teacher(Model):
         self.last_name = last_name
         self.address = address
         self.module_key = module_key
+
+    @property
+    def password(self):
+        raise AttributeError("password is not a readable attribute")
+
+    @password.setter
+    def password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def verify_password(self, password):
+        return check_password_hash(self.password_hash, password)

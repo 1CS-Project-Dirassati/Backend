@@ -14,7 +14,7 @@ class Level(Model):
     # Relationships
     groups = relationship("Group", back_populates="level")
     module_associations = relationship(
-        "LevelModuleAssociation", back_populates="level", cascade="all, delete-orphan"
+        "TeachingUnit", back_populates="level", cascade="all, delete-orphan"
     )
     students = relationship("Student", back_populates="level")
     semesters = relationship("Semester", back_populates="level")

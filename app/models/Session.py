@@ -2,26 +2,26 @@ from app import db
 from . import Column, Model, relationship
 
 
-class Module(Model):
-    """Represents a subject or course module taught."""
-
-    __tablename__ = "module"
+class Session(Model):
+    """Represents a scheduled class session for a specific module and group."""
+    __tablename__ = "session"
 
     id = Column(db.Integer, primary_key=True)
-    name = Column(db.String(50), nullable=False)
-    description = Column(db.String(255), nullable=True)
-    teacher_id = Column(
-        db.Integer, db.ForeignKey("teacher.id"), nullable=False, index=True
-    )
+    teacher_id = Column(db.Integer, db.ForeignKey("teacher.id"), nullable=False, index=True)
+    module_id = Column(db.Integer, db.ForeignKey("module.id"), nullable=False, index=True)
+    group_id = Column(db.Integer, db.ForeignKey("group.id"), nullable=False, index=True)
+    semester_id = Column(db.Integer, db.ForeignKey("semester.id"), nullable=False, index=True)
+    salle_id = Column(db.Integer, db.ForeignKey("salle.id"), nullable=True)
+    start_time = Column(db.DateTime(timezone=True), nullable=False, index=True)
+    weeks = Column(db.Integer, nullable=True)
 
     # Relationships
-    teacher = relationship("Teacher", back_populates="modules")
-    level_associations = relationship(
-        "LevelModuleAssociation", back_populates="module", cascade="all, delete-orphan"
-    )
-    sessions = relationship("Session", back_populates="module")
-    cours = relationship("Cours", back_populates="module", cascade="all, delete-orphan")
-    notes = relationship("Note", back_populates="module", cascade="all, delete-orphan")
+    teacher = relationship("Teacher", back_populates="sessions")
+    module = relationship("Module", back_populates="sessions")
+    group = relationship("Group", back_populates="sessions")
+    semester = relationship("Semester", back_populates="sessions")
+    salle = relationship("Salle", back_populates="sessions")
+    absences = relationship("Absence", back_populates="session", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Module id={self.id} name={self.name}>"
+        return f"<Session id={self.id} module_id={self.module_id} group_id={self.group_id} start={self.start_time}>"
