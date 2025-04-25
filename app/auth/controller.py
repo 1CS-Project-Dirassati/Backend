@@ -1,6 +1,7 @@
 from flask import request
 import logging
 from flask_restx import Resource
+from app.extensions import limiter
 
 # Ensure validation_error is correctly implemented in app.utils
 from app.utils import validation_error
@@ -49,6 +50,7 @@ class AuthLogin(Resource):
     auth_login_req = AuthDto.auth_login
     auth_login_resp = AuthDto.auth_success  # Or a specific login response DTO
 
+    @limiter.limit("5 per minute")  # Rate limit for login attempts
     @api.doc(
         "Auth login",
         responses={
@@ -75,6 +77,7 @@ class AuthLogout(Resource):
     # auth_logout_req = AuthDto.auth_logout
     auth_logout_resp = AuthDto.auth_success  # Generic success message
 
+    @limiter.limit("60 per hour")  # Rate limit for logout attempts
     @api.doc(
         "Auth logout",
         security="Bearer",  # Indicate JWT Bearer token is required
@@ -103,6 +106,7 @@ class AuthRegister(Resource):
     auth_register_req = AuthDto.auth_register
     auth_register_resp = AuthDto.auth_success  # Response includes tokens and user
 
+    @limiter.limit("3 per hour")  # Rate limit for registration attempts
     @api.doc(
         "Auth registration",
         responses={
@@ -132,6 +136,7 @@ class AuthVerifyOtp(Resource):
     auth_verify_otp_req = AuthDto.auth_verify_otp
     auth_verify_otp_resp = AuthDto.auth_success  # Includes tokens and user
 
+    @limiter.limit("5 per hour")  # Rate limit for OTP verification attempts
     @api.doc(
         "Auth verify OTP",
         responses={
@@ -160,6 +165,7 @@ class AuthForgotPassword(Resource):
     auth_forgot_req = AuthDto.auth_forgot
     auth_forgot_resp = AuthDto.auth_success  # Only status and message
 
+    @limiter.limit("3 per hour")  # Rate limit for password reset requests
     @api.doc(
         "Auth forgot password",
         responses={
@@ -190,6 +196,7 @@ class AuthResetPassword(Resource):
     auth_reset_req = AuthDto.auth_reset_password
     auth_reset_resp = AuthDto.auth_success  # Only status and message
 
+    @limiter.limit("5 per hour")  # Rate limit for password reset attempts
     @api.doc(
         "Auth reset password",
         responses={
@@ -218,6 +225,7 @@ class AuthRefresh(Resource):
     auth_refresh_req = AuthDto.auth_refresh  # Empty model
     auth_refresh_resp = AuthDto.auth_success  # Returns new access token
 
+    @limiter.limit("30 per minute")  # Rate limit for refresh attempts
     @api.doc(
         "Auth refresh access token",
         security="Bearer",  # Requires Bearer refresh token
@@ -231,8 +239,8 @@ class AuthRefresh(Resource):
     @jwt_required(refresh=True)  # Ensures it's a valid refresh token
     def post(self):
         """Refresh access token using Bearer refresh token"""
-        print ("identity gotten from refresh token")
+        print("identity gotten from refresh token")
         identity = get_jwt_identity()  # Get identity from refresh token
         role = get_jwt()["role"]
-        print (identity)
-        return AuthService.refresh(identity , role)
+        print(identity)
+        return AuthService.refresh(identity, role)
