@@ -17,15 +17,26 @@ class Config:
     OTP_EXPIRATION_SECONDS = os.environ.get(
         "OTP_EXPIRATION_SECONDS", 300
     )  # Example: 5 mins
+    OTP_EXPIRATION_MINUTES = os.environ.get(
+        "OTP_EXPIRATION_MINUTES", 5
+    )  # Example: 5 mins
     PASSWORD_RESET_TOKEN_MAX_AGE_SECONDS = os.environ.get(
         "PASSWORD_RESET_TOKEN_MAX_AGE_SECONDS", 3600
     )  # Example: 1 hour
     FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:3000")
 
+    # mailjet api keys
+    MAILJET_API_KEY = os.environ.get("MAILJET_API_KEY")
+    MAILJET_SECRET_KEY = os.environ.get("MAILJET_SECRET_KEY")
+    MAILJET_SENDER = os.environ.get("MAILJET_SENDER")
+    MAILJET_SENDER_NAME = os.environ.get("MAILJET_SENDER_NAME", "Dirassati")
     # JWT Extended config
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", os.urandom(24))
     ## Set the token to expire every week
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=7)
+    RESET_LINK_EXPIRATION_MINUTES = os.environ.get(
+        "RESET_LINK_EXPIRATION_MINUTES", 5
+    )  # Example: 5 mins
 
 
 class DevelopmentConfig(Config):
