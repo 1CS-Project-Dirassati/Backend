@@ -24,6 +24,7 @@ config = app.config
 USERNAME = config.get("USERNAME")
 PASSWORD = config.get("PASSWORD")
 
+
 def check_auth():
     auth = request.authorization
     return auth and auth.username == USERNAME and auth.password == PASSWORD
@@ -31,7 +32,7 @@ def check_auth():
 
 @app.before_request
 def protect_docs():
-    if request.path.startswith("/") or request.path.startswith("/docs"):
+    if request.path.startswith("/swagger") or request.path.startswith("/docs"):
         if not check_auth():
             return Response(
                 "Could not verify your access to the documentation.\n"

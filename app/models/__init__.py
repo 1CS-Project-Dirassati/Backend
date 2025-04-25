@@ -4,7 +4,7 @@ Column = db.Column
 Model = db.Model
 relationship = db.relationship
 
-
+# Importing all models for easier access
 from .Admin import Admin
 from .Absence import Absence
 from .Chat import Chat
@@ -24,6 +24,28 @@ from .Salle import Salle
 from .Semester import Semester
 from .TeachingUnit import TeachingUnit
 from .Teachings import Teachings
+
+# importing all schemas for easier access
+from .Schemas import (
+    AdminSchema,
+    AbsenceSchema,
+    ChatSchema,
+    FeeSchema,
+    GroupSchema,
+    LessonSchema,
+    ModuleSchema,
+    MessageSchema,
+    NoteSchema,
+    NotificationSchema,
+    ParentSchema,
+    SalleSchema,
+    SemesterSchema,
+    StudentSchema,
+    SessionSchema,
+    TeacherSchema,
+    TeachingUnitSchema,
+    TeachingsSchema,
+)
 
 
 __all__ = [
@@ -46,4 +68,22 @@ __all__ = [
     "Semester",
     "TeachingUnit",
     "Teachings",
+    "AdminSchema",
+    "AbsenceSchema",
+    "ChatSchema",
+    "FeeSchema",
+    "GroupSchema",
+    "LessonSchema",
+    "ModuleSchema",
+    "MessageSchema",
+    "NoteSchema",
+    "NotificationSchema",
+    "ParentSchema",
+    "SalleSchema",
+    "SemesterSchema",
+    "StudentSchema",
+    "SessionSchema",
+    "TeacherSchema",
+    "TeachingUnitSchema",
+    "TeachingsSchema",
 ]

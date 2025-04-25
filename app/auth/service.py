@@ -21,7 +21,7 @@ from app.extensions import (
     redis_client,
     jwt,
 )  # Assuming redis is initialized in extensions
-from app.services import send_email
+from app.service import send_email
 
 schemas = {
     "parent": ParentSchema(),

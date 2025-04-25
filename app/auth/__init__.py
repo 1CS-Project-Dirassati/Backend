@@ -12,7 +12,6 @@ auth = Api(
     title="Dirassati",
     description="Authenticate and receive tokens.",
     authorizations=authorizations,
-    security="Bearer",
 )
 
 # API namespaces
