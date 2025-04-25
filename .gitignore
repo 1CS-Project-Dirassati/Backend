@@ -1,6 +1,8 @@
 # --- Python ---
 .env
 # Byte-compiled / optimized / DLL files
+combine_files.sh
+combined_output.txt
 __pycache__/
 *.py[cod]
 *$py.class

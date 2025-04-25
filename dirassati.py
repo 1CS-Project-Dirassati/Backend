@@ -19,12 +19,13 @@ from app.models import *
 
 
 app = create_app(os.getenv("FLASK_CONFIG") or "default")
+config = app.config
 migrate = Migrate(app, db)
 
 
 @app.shell_context_processor
 def make_shell_context():
-    return dict(db=db)
+    return dict(db=db, config=config)
 
 
 @app.cli.command()
