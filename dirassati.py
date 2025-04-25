@@ -3,6 +3,7 @@
 import os
 
 from dotenv import load_dotenv
+from flask import request, Response
 
 dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
 if os.path.exists(dotenv_path):
@@ -20,6 +21,26 @@ from app.models import *
 
 app = create_app(os.getenv("FLASK_CONFIG") or "default")
 config = app.config
+USERNAME = config.get("USERNAME")
+PASSWORD = config.get("PASSWORD")
+
+def check_auth():
+    auth = request.authorization
+    return auth and auth.username == USERNAME and auth.password == PASSWORD
+
+
+@app.before_request
+def protect_docs():
+    if request.path.startswith("/") or request.path.startswith("/docs"):
+        if not check_auth():
+            return Response(
+                "Could not verify your access to the documentation.\n"
+                "You have to login with proper credentials",
+                401,
+                {"WWW-Authenticate": 'Basic realm="Login Required"'},
+            )
+
+
 migrate = Migrate(app, db)
 
 
