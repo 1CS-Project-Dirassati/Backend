@@ -55,7 +55,6 @@ class Teacher(Model):
         phone_number,
         first_name=None,
         last_name=None,
-        address=None,
         module_key=None,
     ):
         self.email = email
@@ -63,16 +62,7 @@ class Teacher(Model):
         self.phone_number = phone_number
         self.first_name = first_name
         self.last_name = last_name
-        self.address = address
         self.module_key = module_key
 
-    @property
-    def password(self):
-        raise AttributeError("password is not a readable attribute")
-
-    @password.setter
-    def password(self, password):
-        self.password_hash = generate_password_hash(password)
-
     def verify_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        return check_password_hash(self.password, password)

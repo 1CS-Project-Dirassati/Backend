@@ -32,6 +32,17 @@ class RefreshSchema(Schema):
     """
 
 
+class OtpSchema(Schema):
+    """/auth/otp [POST]
+
+    Parameters:
+    - Email
+    - OTP (Str)
+    """
+
+    email = fields.Email(required=True, validate=[Length(max=64)])
+    otp = fields.Str(required=True, validate=[Length(min=6, max=6)])
+
 
 class RegisterSchema(Schema):
     """/auth/register [POST]
@@ -44,33 +55,7 @@ class RegisterSchema(Schema):
     """
 
     email = fields.Email(required=True, validate=[Length(max=64)])
-    username = fields.Str(
-        required=True,
-        validate=[
-            Length(min=4, max=15),
-            Regexp(
-                r"^([A-Za-z0-9_](?:(?:[A-Za-z0-9_]|(?:\.(?!\.))){0,28}(?:[A-Za-z0-9_]))?)$",
-                error="Invalid username!",
-            ),
-        ],
-    )
-    name = fields.Str(
-        validate=[
-            Regexp(
-                r"^[A-Za-z]+((\s)?((\'|\-|\.)?([A-Za-z])+))*$",
-                error="Invalid name!",
-            )
-        ]
-    )
     password = fields.Str(required=True, validate=[Length(min=8, max=128)])
-    phone_number = fields.Str(
-        validate=[
-            Regexp(
-                r"^\+?[1-9]\d{1,14}$",
-                error="Invalid phone number format.",
-            )
-        ]
-    )
     role = fields.Str(
         required=True,
         validate=[
@@ -79,4 +64,28 @@ class RegisterSchema(Schema):
                 error="Role must be one of the following: parent, teacher, admin, or student.",
             )
         ],
+    )
+    phone_number = fields.Str(
+        validate=[
+            Regexp(
+                r"^\+?[1-9]\d{1,14}$",
+                error="Invalid phone number format.",
+            )
+        ]
+    )
+    first_name = fields.Str(
+        validate=[
+            Regexp(
+                r"^[A-Za-z]+((\s)?((\'|\-|\.)?([A-Za-z])+))*$",
+                error="Invalid first name!",
+            )
+        ]
+    )
+    last_name = fields.Str(
+        validate=[
+            Regexp(
+                r"^[A-Za-z]+((\s)?((\'|\-|\.)?([A-Za-z])+))*$",
+                error="invalid last name",
+            )
+        ]
     )

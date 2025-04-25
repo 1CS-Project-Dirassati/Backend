@@ -3,10 +3,8 @@ from flask import make_response, current_app, jsonify
 from flask_jwt_extended import (
     create_refresh_token,
     create_access_token,
-    get_jwt_identity,
-    get_jwt,
-    set_access_cookies,
 )
+import json
 from datetime import timezone, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -57,31 +55,14 @@ class AuthService:
                 )
 
             elif user and user.verify_password(password):
-                print("debug pointer2")
                 user_info = schemas[role].dump(user)
 
                 access_token = create_access_token(identity=user.id)
-                refresh_token = create_refresh_token(identity=str(user.id))
-                resp = make_response(
-                    jsonify(
-                        {
-                            "message": "Successfully logged in.",
-                            "access_token": access_token,
-                            "refresh_token": refresh_token,
-                            "user": user_info,
-                        }
-                    ),
-                    200,
-                )
-                resp.set_cookie(
-                    "refresh_token",
-                    refresh_token,
-                    httponly=False,
-                    secure=True,
-                    samesite="None",
-                    max_age=timedelta(days=30),
-                )
 
+                refresh_token = create_refresh_token(identity=str(user.id))
+                resp = message(True, "User has been logged in.")
+                resp["access_token"] = access_token
+                resp["refresh_token"] = refresh_token
                 return resp
 
             return err_resp(
@@ -93,11 +74,6 @@ class AuthService:
             return internal_err_resp()
 
     @staticmethod
-    def refresh():
-        identity = get_jwt_identity()
-        print(identity)
-
-    @staticmethod
     def register(data):
         # Assign vars
 
@@ -105,55 +81,97 @@ class AuthService:
         email = data["email"]
         password = data["password"]
         role = data["role"]
-        data_name = data["name"]
         phone_number = data["phone_number"]
-        username = data["username"]
+        first_name = data["first_name"]
+        last_name = data["last_name"]
 
-        print("debug pointer")
+        if role == "admin":
+            return err_resp(
+                "Admin registration is not allowed.", "admin_registration", 403
+            )
         # Check if the email is taken
         if models[role].query.filter_by(email=email).first() is not None:
             return err_resp("Email is already being used.", "email_taken", 403)
         try:
-            print("debug pointer1")
-            # new_user = models[role](
-            #    email=email,
-            #    first_name=data_name,
-            #    password_hash=password,
-            #    last_name=data_name,
-            #    phone_number=phone_number,
-            # )
-            new_user = Parent(
-                email=email,
-                first_name=data_name,
-                password_hash=generate_password_hash(password),
-                last_name=data_name,
-                phone_number=phone_number,
-            )
-            print("debug pointer2")
 
-            # Generate a random OTP
+            if redis_client.get(
+                f"otp:{email}"
+            ):  # Check if OTP already exists for this email
+                return err_resp(
+                    "An OTP has already been sent to this email. Please check your inbox.",
+                    "otp_exists",
+                    403,
+                )
+
             otp = random.randint(100000, 999999)
+            user_info = {}
+            user_info["email"] = email
+            user_info["password"] = generate_password_hash(password)
+            user_info["phone_number"] = phone_number
+            user_info["first_name"] = first_name
+            user_info["last_name"] = last_name
+            info = [user_info, otp, role]
+            # Generate a random OTP
             # Load the new user's info
-            user_info = schemas[role].dump(new_user)
-            # redis_client.set(
-            #    f"otp:{user_info['email']}",
-            #    otp,
-            #    user_info,
-            #    ex=300,  # OTP expires in 5 minutes
-            # )
-            db.session.add(new_user)
-            # Commit changes to DB
-            db.session.commit()
 
-            # Create an access token
-            access_token = create_access_token(identity=new_user.id)
+            redis_client.set(
+                f"otp:{email}",
+                json.dumps(info),
+                ex=300,  # OTP expires in 5 minutes
+            )
 
-            resp = message(True, "User has been registered.")
-            resp["access_token"] = access_token
-            resp["user"] = user_info
-
+            resp = message(True, "Otp has been sent to your email.")
             return resp, 201
 
         except Exception as error:
             current_app.logger.error(error)
             return internal_err_resp()
+
+    @staticmethod
+    def verify_otp(data):
+        # Assign vars
+        email = data["email"]
+        otp = data["otp"]
+
+        info = redis_client.getdel(f"otp:{email}")
+
+        if not info:
+            return err_resp("OTP has expired or is invalid.", "otp_invalid", 403)
+        info = json.loads(info)
+        stored_otp = info[1]
+        if int(stored_otp) != int(otp):
+            return err_resp("Invalid OTP.", "otp_invalid", 403)
+
+        # If valid, create the user in the database
+        try:
+
+            print("debug")
+            user_info = info[0]
+            role = info[2]
+            print(user_info)
+            new_user = schemas[role].load(user_info)
+            print(new_user)
+            print(">>>", type(new_user))
+
+            db.session.add(new_user)
+            db.session.commit()
+
+            access_token = create_access_token(identity=new_user.id)
+            refresh_token = create_refresh_token(identity=str(new_user.id))
+            resp = message(True, "User has been registered.")
+            resp["access_token"] = access_token
+            resp["refresh_token"] = refresh_token
+            return resp, 201
+
+        except Exception as error:
+            current_app.logger.error(error)
+            return internal_err_resp()
+
+    @staticmethod
+    def refresh(identity):
+        # Create a new access token using the identity from the refresh token
+        access_token = create_access_token(identity=identity)
+        resp = message(True, "User has been registered.")
+        resp["access_token"] = access_token
+        resp = jsonify()
+        return resp

@@ -22,8 +22,8 @@ class AuthDto:
     auth_login = api.model(
         "Login data",
         {
-            "email": fields.String(required=True),
-            "password": fields.String(required=True),
+            "email": fields.String(required=True, example="johndoe@martello.com"),
+            "password": fields.String(required=True, example="supersecretpassword"),
             "role": fields.String(
                 required=True,
                 enum=["parent", "teacher", "admin", "student"],
@@ -33,22 +33,33 @@ class AuthDto:
     )
     auth_refresh = api.model(
         "Refresh token",
-        {
-        },
+        {},
     )
 
     auth_register = api.model(
         "Registration data",
         {
-            "email": fields.String(required=True),
+            "email": fields.String(required=True, example="gulag@maserati.com"),
+            "password": fields.String(required=True, example="supersecretpassword"),
             "role": fields.String(
                 required=True,
                 enum=["parent", "teacher", "admin", "student"],
                 description="Role of the user",
             ),
-            # Name is optional
-            "name": fields.String,
-            "password": fields.String(required=True),
+            "phone_number": fields.String(
+                required=True,
+                description="Phone number of the user",
+                example="+1234567890",
+            ),
+            "first_name": fields.String(example="John"),
+            "last_name": fields.String(example="Doe"),
+        },
+    )
+    auth_verify_otp = api.model(
+        "Verify OTP",
+        {
+            "otp": fields.String(required=True, example="123456"),
+            "email": fields.String(required=True, example="jane@jane.com"),
         },
     )
 
