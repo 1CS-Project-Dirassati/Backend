@@ -8,6 +8,19 @@ class Config:
     # Change the secret key in production run.
     SECRET_KEY = os.environ.get("SECRET_KEY", os.urandom(24))
     DEBUG = False
+    ACCESS_EXPIRES_SECONDS = os.environ.get(
+        "ACCESS_TOKEN_EXPIRES_SECONDS", 60 * 15
+    )  # Example: 15 mins
+    REFRESH_EXPIRES_DAYS = os.environ.get(
+        "REFRESH_TOKEN_EXPIRES_DAYS", 30
+    )  # Example: 30 days
+    OTP_EXPIRATION_SECONDS = os.environ.get(
+        "OTP_EXPIRATION_SECONDS", 300
+    )  # Example: 5 mins
+    PASSWORD_RESET_TOKEN_MAX_AGE_SECONDS = os.environ.get(
+        "PASSWORD_RESET_TOKEN_MAX_AGE_SECONDS", 3600
+    )  # Example: 1 hour
+    FRONTEND_BASE_URL = os.environ.get("FRONTEND_BASE_URL", "http://localhost:3000")
 
     # JWT Extended config
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", os.urandom(24))
@@ -16,6 +29,7 @@ class Config:
 
 
 class DevelopmentConfig(Config):
+    OTP_EXPIRATION_TIME = 300  # 5 minutes
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "DATABASE_URL", "sqlite:///" + os.path.join(basedir, "data-dev.sqlite")

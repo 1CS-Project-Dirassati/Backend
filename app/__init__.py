@@ -19,6 +19,7 @@ def create_app(config_name):
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])
 
+
     register_extensions(app)
 
     # Register blueprints
@@ -41,3 +42,4 @@ def register_extensions(app):
     bcrypt.init_app(app)
     cors.init_app(app)
     redis_client.init_app(app)
+
