@@ -1,5 +1,5 @@
 # Assuming your GroupSchema correctly maps the Group model
-from models import GroupSchema
+from app.models import GroupSchema
 
 def load_data(group_db_obj, many=False):
     """

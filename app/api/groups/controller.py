@@ -4,7 +4,7 @@ from flask_jwt_extended import jwt_required
 
 # Import shared extensions/decorators
 from app.extensions import limiter
-from app.auth.decorators import roles_required
+from app.api.decorators import roles_required
 
 # Import group-specific modules
 from .service import GroupService
@@ -22,22 +22,15 @@ group_update_dto = GroupDto.group_update
 # Define endpoint for listing all groups and creating new ones
 @api.route("/")
 class GroupList(Resource):
-    # Add decorators directly to the methods (get, post, etc.)
 
     @api.doc(
         "List all groups",
-        security="Bearer", # Indicate JWT is required for Swagger UI
-        responses={
-            200: ("List of groups successfully sent", list_data_resp),
-            401: "Unauthorized - Invalid or missing JWT.",
-            403: "Forbidden - Insufficient role privileges.",
-            429: "Too Many Requests - Rate limit exceeded.",
-            500: "Internal Server Error.",
-        },
+        security="Bearer",
+        responses={200: ("Success", list_data_resp), 401: "Unauthorized", 403: "Forbidden", 429: "Too Many Requests", 500: "Internal Server Error"},
     )
-    @jwt_required() # Ensures user is logged in
-    @roles_required('admin', 'teacher', 'parent', 'student') # Define who can list groups
-    @limiter.limit("50/minute") # Example rate limit
+    @jwt_required()
+    @roles_required('admin', 'teacher', 'parent', 'student')
+    @limiter.limit("50/minute")
     def get(self):
         """ Get a list of all groups """
         return GroupService.get_all_groups()
@@ -45,47 +38,32 @@ class GroupList(Resource):
     @api.doc(
         "Create a new group",
         security="Bearer",
-        responses={
-             201: ("Group successfully created", data_resp), # Use data_resp if returning the created group
-             400: "Input payload validation failed",
-             401: "Unauthorized - Invalid or missing JWT.",
-             403: "Forbidden - Insufficient role privileges.",
-             429: "Too Many Requests - Rate limit exceeded.",
-             500: "Internal Server Error.",
-        }
+        responses={201: ("Created", data_resp), 400: "Validation Error", 401: "Unauthorized", 403: "Forbidden", 429: "Too Many Requests", 500: "Internal Server Error"}
     )
-    @api.expect(group_create_dto, validate=True) # Expect group data in request body
+    @api.expect(group_create_dto, validate=True)
     @jwt_required()
-    @roles_required('admin', 'teacher') # Define who can create groups
+    @roles_required('admin', 'teacher')
     @limiter.limit("10/minute")
     def post(self):
         """ Create a new group """
         data = request.get_json()
-        # return GroupService.create_group(data) # Uncomment when service method is implemented
-        return {"status": False, "message": "POST method not implemented yet"}, 501
+        # Call the implemented service method
+        return GroupService.create_group(data)
 
 
 # Define endpoint for accessing a specific group by ID
 @api.route("/<int:group_id>")
-@api.param('group_id', 'The unique identifier of the group') # Document path parameter
+@api.param('group_id', 'The unique identifier of the group')
 class GroupResource(Resource):
-    # Add decorators directly to the methods (get, put, delete, etc.)
 
     @api.doc(
         "Get a specific group by ID",
         security="Bearer",
-        responses={
-            200: ("Group data successfully sent", data_resp),
-            401: "Unauthorized - Invalid or missing JWT.",
-            403: "Forbidden - Insufficient role privileges.",
-            404: "Group not found!",
-            429: "Too Many Requests - Rate limit exceeded.",
-            500: "Internal Server Error.",
-        },
+        responses={200: ("Success", data_resp), 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 429: "Too Many Requests", 500: "Internal Server Error"}
     )
-    @jwt_required() # Ensures user is logged in
-    @roles_required('admin', 'teacher', 'parent', 'student') # Define who can view a specific group
-    @limiter.limit("100/minute") # Example rate limit
+    @jwt_required()
+    @roles_required('admin', 'teacher', 'parent', 'student')
+    @limiter.limit("100/minute")
     def get(self, group_id):
         """ Get a specific group's data by its ID """
         return GroupService.get_group_data(group_id)
@@ -93,47 +71,27 @@ class GroupResource(Resource):
     @api.doc(
         "Update a group",
         security="Bearer",
-         responses={
-             200: ("Group successfully updated", data_resp),
-             400: "Input payload validation failed",
-             401: "Unauthorized - Invalid or missing JWT.",
-             403: "Forbidden - Insufficient role privileges.",
-             404: "Group not found!",
-             429: "Too Many Requests - Rate limit exceeded.",
-             500: "Internal Server Error.",
-        }
+        responses={200: ("Success", data_resp), 400: "Validation Error", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 429: "Too Many Requests", 500: "Internal Server Error"}
     )
-    @api.expect(group_update_dto, validate=True) # Use update DTO, allow partial updates if using PATCH
+    @api.expect(group_update_dto, validate=True) # Use PUT for full update, PATCH for partial
     @jwt_required()
-    @roles_required('admin', 'teacher') # Define who can update groups
+    @roles_required('admin', 'teacher')
     @limiter.limit("30/minute")
     def put(self, group_id):
         """ Update an existing group (full update) """
         data = request.get_json()
-        # return GroupService.update_group(group_id, data) # Uncomment when service method is implemented
-        return {"status": False, "message": "PUT method not implemented yet"}, 501
-
-    # Consider using PATCH for partial updates: @api.expect(group_update_dto, validate=True, partial=True)
+        # Call the implemented service method
+        return GroupService.update_group(group_id, data)
 
     @api.doc(
         "Delete a group",
         security="Bearer",
-        responses={
-             204: "Group successfully deleted.", # 204 No Content typically used for successful DELETE
-             401: "Unauthorized - Invalid or missing JWT.",
-             403: "Forbidden - Insufficient role privileges.",
-             404: "Group not found!",
-             429: "Too Many Requests - Rate limit exceeded.",
-             500: "Internal Server Error.",
-        }
+        responses={204: "No Content - Success", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 409: "Conflict (e.g., cannot delete if students exist)", 429: "Too Many Requests", 500: "Internal Server Error"}
     )
     @jwt_required()
-    @roles_required('admin') # Define who can delete groups
+    @roles_required('admin')
     @limiter.limit("10/minute")
     def delete(self, group_id):
         """ Delete a group """
-        # return GroupService.delete_group(group_id) # Uncomment when service method is implemented
-        # Successful delete usually returns no body, status 204
-        # return '', 204
-        return {"status": False, "message": "DELETE method not implemented yet"}, 501
-
+        # Call the implemented service method
+        return GroupService.delete_group(group_id) # Returns (None, 204) on success
