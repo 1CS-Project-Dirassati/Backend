@@ -1,4 +1,4 @@
-""" Top level module
+"""Top level module
 
 This module:
 
@@ -9,7 +9,7 @@ This module:
 from flask import Flask
 
 # Import extensions
-from .extensions import bcrypt, cors, db, jwt, ma
+from .extensions import bcrypt, cors, db, jwt, ma, redis_client
 
 # Import config
 from config import config_by_name
@@ -40,3 +40,4 @@ def register_extensions(app):
     jwt.init_app(app)
     bcrypt.init_app(app)
     cors.init_app(app)
+    redis_client.init_app(app)

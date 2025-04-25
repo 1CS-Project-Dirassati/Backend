@@ -27,7 +27,6 @@ class Semester(Model):
 
     level = relationship("Level", back_populates="semesters")
     sessions = relationship("Session", back_populates="semester")
-    group = relationship("Group", back_populates="semesters")
 
     def __repr__(self):
         return f"<Semester id={self.id} name={self.name} level_id={self.level_id}>"

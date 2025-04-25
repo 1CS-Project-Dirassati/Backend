@@ -1,6 +1,7 @@
 from app import db
 from . import Column, Model, relationship
 from datetime import datetime, timezone
+from werkzeug.security import  check_password_hash
 
 
 class Parent(Model):
@@ -40,9 +41,6 @@ class Parent(Model):
     notifications = relationship(
         "Notification", back_populates="parent", cascade="all, delete-orphan"
     )
-    sent_messages = relationship(
-        "Message", foreign_keys="Message.sender_id", back_populates="sender"
-    )
 
     def __repr__(self):
         return f"<Parent id={self.id} email={self.email}>"
@@ -50,15 +48,17 @@ class Parent(Model):
     def __init__(
         self,
         email,
-        password_hash,
+        password,
         phone_number,
         first_name=None,
         last_name=None,
-        address=None,
     ):
+
         self.email = email
-        self.password = password_hash
+        self.password = password
         self.phone_number = phone_number
         self.first_name = first_name
         self.last_name = last_name
-        self.address = address
+
+    def verify_password(self, password):
+        return check_password_hash(self.password, password)

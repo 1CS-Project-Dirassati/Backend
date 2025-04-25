@@ -1,6 +1,7 @@
 from app import db
 from datetime import datetime, timezone
 from . import Column, Model, relationship
+from werkzeug.security import check_password_hash
 
 
 class Student(Model):
@@ -52,14 +53,15 @@ class Student(Model):
         parent_id,
         first_name=None,
         last_name=None,
-        group_id=None,
         docs_url=None,
     ):
         self.email = email
         self.password = password_hash
         self.level_id = level_id
         self.parent_id = parent_id
-        self.group_id = group_id
         self.first_name = first_name
         self.last_name = last_name
         self.docs_url = docs_url
+
+    def verify_password(self, password):
+        return check_password_hash(self.password, password)

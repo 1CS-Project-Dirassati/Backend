@@ -1,206 +1,133 @@
 from app import ma
+from app.models import (
+    Admin,
+    Absence,
+    Chat,
+    Fee,
+    Group,
+    Level,
+    Lesson,
+    Module,
+    Message,
+    Note,
+    Notification,
+    Parent,
+    Salle,
+    Semester,
+    Student,
+    Session,
+    Teacher,
+    Teachings,
+    TeachingUnit,
+
+)
 
 
-class AdminSchema(ma.Schema):
+class AdminSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "first_name",
-            "last_name",
-            "email",
-            "phone_number",
-            "is_super_admin",
-            "created_at",
-            "updated_at",
-        )
+        model = Admin
+        load_instance = True
 
 
-class AbsenceSchema(ma.Schema):
+class AbsenceSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "student_id",
-            "session_id",
-            "justified",
-            "reason",
-            "recorded_at",
-        )
+        model = Absence
+        load_instance = True
 
 
-class ChatSchema(ma.Schema):
+class ChatSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "parent_id",
-            "teacher_id",
-            "created_at",
-        )
+        model = Chat
+        load_instance = True
 
 
-class FeeSchema(ma.Schema):
+class FeeSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "parent_id",
-            "amount",
-            "description",
-            "due_date",
-            "status",
-            "payment_date",
-            "created_at",
-            "updated_at",
-        )
+        model = Fee
+        load_instance = True
 
 
-class GroupSchema(ma.Schema):
+class GroupSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "name",
-            "level_id",
-        )
+        model = Group
+        load_instance = True
 
 
-class CoursSchema(ma.Schema):
+class LessonSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "title",
-            "content",
-            "module_id",
-            "teacher_id",
-            "created_at",
-        )
+        model = Lesson
+        load_instance = True
 
 
-class LevelSchema(ma.Schema):
+class LevelSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "name",
-            "description",
-        )
+        model = Level
+        load_instance = True
 
 
-class ModuleSchema(ma.Schema):
+class ModuleSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "name",
-            "description",
-            "teacher_id",
-        )
+        model = Module
+        load_instance = True
 
 
-class NoteSchema(ma.Schema):
+class NoteSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "student_id",
-            "module_id",
-            "teacher_id",
-            "value",
-            "comment",
-            "created_at",
-        )
+        model = Note
+        load_instance = True
 
 
-class NotificationSchema(ma.Schema):
+class NotificationSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "parent_id",
-            "message",
-            "notification_type",
-            "is_read",
-            "created_at",
-        )
+        model = Notification
+        load_instance = True
 
 
-class ParentSchema(ma.Schema):
+class ParentSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "first_name",
-            "last_name",
-            "email",
-            "is_email_verified",
-            "phone_number",
-            "is_phone_verified",
-            "address",
-            "profile_picture",
-            "created_at",
-            "updated_at",
-        )
+        model = Parent
+        load_instance = True
 
 
-class SalleSchema(ma.Schema):
+class SalleSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "name",
-            "capacity",
-            "location",
-        )
+        model = Salle
+        load_instance = True
 
 
-class SemesterSchema(ma.Schema):
+class SemesterSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "name",
-            "level_id",
-            "start_date",
-            "duration",
-            "created_at",
-            "updated_at",
-        )
+        model = Semester
+        load_instance = True
 
 
-class StudentSchema(ma.Schema):
+class StudentSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "first_name",
-            "last_name",
-            "email",
-            "level_id",
-            "group_id",
-            "is_approved",
-            "parent_id",
-            "docs_url",
-            "created_at",
-            "updated_at",
-        )
+        model = Student
+        load_instance = True
 
 
-class TeacherSchema(ma.Schema):
+class TeacherSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "id",
-            "first_name",
-            "last_name",
-            "email",
-            "phone_number",
-            "address",
-            "profile_picture",
-            "module_key",
-            "created_at",
-            "updated_at",
-        )
+        model = Teacher
+        load_instance = True
 
 
-class TeachingsSchema(ma.Schema):
+class TeachingsSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "teacher_id",
-            "group_id",
-        )
+        model = Teachings
+        load_instance = True
 
 
-class TeachingUnitSchema(ma.Schema):
+class TeachingUnitSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        fields = (
-            "level_id",
-            "module_id",
-        )
+        model = TeachingUnit
+        load_instance = True
+class SessionSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = Session
+        load_instance = True
+class MessageSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = Message
+        load_instance = True

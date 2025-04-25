@@ -1,6 +1,7 @@
 from app import db
 from datetime import datetime, timezone
 from . import Column, Model
+from werkzeug.security import check_password_hash
 
 
 class Admin(Model):
@@ -29,3 +30,6 @@ class Admin(Model):
 
     def __repr__(self):
         return f"<Admin id={self.id} email={self.email}>"
+
+    def verify_password(self, password):
+        return check_password_hash(self.password, password)

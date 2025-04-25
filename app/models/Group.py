@@ -13,12 +13,11 @@ class Group(Model):
 
     # Relationships
     level = relationship("Level", back_populates="groups")
-    teacher_associations = relationship(
-        "TeacherGroupAssociation", back_populates="group", cascade="all, delete-orphan"
-    )
     students = relationship("Student", back_populates="group")
+    teacher_associations = relationship(
+        "Teachings", back_populates="group", cascade="all, delete-orphan"
+    )
     sessions = relationship("Session", back_populates="group")
-    semesters = relationship("Semester", back_populates="group")
 
     def __repr__(self):
         return f"<Group id={self.id} name={self.name} level_id={self.level_id}>"

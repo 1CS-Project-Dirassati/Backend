@@ -2,7 +2,7 @@ from app import db
 from . import Column, Model, relationship
 
 
-class teachings(Model):
+class Teachings(Model):
     """Association table linking Teachers to the Groups they teach (Many-to-Many)."""
 
     __tablename__ = "teacher_group_association"
