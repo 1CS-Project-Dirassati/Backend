@@ -9,7 +9,7 @@ This module:
 from flask import Flask
 
 # Import extensions
-from .extensions import bcrypt, cors, db, jwt, ma, redis_client
+from .extensions import bcrypt, cors, db, jwt, ma, redis_client, limiter
 
 # Import config
 from config import config_by_name
@@ -18,7 +18,6 @@ from config import config_by_name
 def create_app(config_name):
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])
-
 
     register_extensions(app)
 
@@ -42,4 +41,4 @@ def register_extensions(app):
     bcrypt.init_app(app)
     cors.init_app(app)
     redis_client.init_app(app)
-
+    limiter.init_app(app)
