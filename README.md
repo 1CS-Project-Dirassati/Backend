@@ -20,6 +20,8 @@ eval "$(poetry env activate)"
 # and run it using
 flask run --debug
 ```
+auth Documentation is available at /
+and the api documentation is available at /api
 dont forget to set the .env file with the following variables:
 ```bash
 export FLASK_APP=dirassati

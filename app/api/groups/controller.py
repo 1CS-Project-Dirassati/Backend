@@ -29,7 +29,7 @@ class GroupList(Resource):
         responses={200: ("Success", list_data_resp), 401: "Unauthorized", 403: "Forbidden", 429: "Too Many Requests", 500: "Internal Server Error"},
     )
     @jwt_required()
-    @roles_required('admin', 'teacher', 'parent', 'student')
+    @roles_required('admin', 'teacher',  'student')
     @limiter.limit("50/minute")
     def get(self):
         """ Get a list of all groups """
