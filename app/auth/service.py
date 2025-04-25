@@ -17,8 +17,11 @@ from app import db
 from app.utils import message, err_resp, internal_err_resp
 from app.models import Parent, Admin, Teacher, Student
 from app.models.Schemas import AdminSchema, ParentSchema, TeacherSchema, StudentSchema
-from app.extensions import redis_client,jwt       # Assuming redis is initialized in extensions
-
+from app.extensions import (
+    redis_client,
+    jwt,
+)  # Assuming redis is initialized in extensions
+from app.services import send_email
 
 schemas = {
     "parent": ParentSchema(),
@@ -219,6 +222,24 @@ class AuthService:
                 reset_link = f"{frontend_base}/reset-password?token={token}"
 
                 # --- Send Email (Using Placeholder) ---
+                # --- Send OTP Email ---
+                subject = f"Madrassati Reset Password Link - "  # Include OTP in subject for easy finding
+                template = (
+                    "email/password_reset"  # Prefix for otp_email.html / otp_email.txt
+                )
+                context = {
+                    "reset_link": reset_link,
+                    "expiration_minutes": current_app.config[
+                        "RESET_LINK_EXPIRATION_MINUTES"
+                    ],
+                }
+                email_sent = send_email(
+                    to_email=email,
+                    subject=subject,
+                    template_prefix=template,
+                    context=context,
+                )
+
                 email_sent = send_password_reset_email(user.email, reset_link)
                 if not email_sent:
                     # Log the failure but still return generic success
@@ -368,6 +389,21 @@ class AuthService:
             # --- Send OTP Email/SMS ---
             # send_registration_otp(email, otp) # Implement this function
 
+            # --- Send OTP Email ---
+            otp_code = otp
+            subject = f"Madrassati Registration - Your OTP Code ({otp_code})"  # Include OTP in subject for easy finding
+            template = "email/otp_email"  # Prefix for otp_email.html / otp_email.txt
+            context = {
+                "otp_code": otp_code,
+                "expiration_minutes": current_app.config["OTP_EXPIRATION_MINUTES"],
+            }
+            email_sent = send_email(
+                to_email=email,
+                subject=subject,
+                template_prefix=template,
+                context=context,
+            )
+
             resp = message(
                 True, "OTP has been sent to your email for registration verification."
             )
@@ -482,7 +518,7 @@ class AuthService:
             return internal_err_resp()
 
     @staticmethod
-    def refresh(user_id,role):
+    def refresh(user_id, role):
         """Refreshes the access token."""
         try:
             # Identity should contain {'id': user_id, 'role': user_role} if set during login/register
