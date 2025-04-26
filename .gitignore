@@ -3,6 +3,7 @@
 # Byte-compiled / optimized / DLL files
 combine_files.sh
 combined_output.txt
+pyrightconfig.json
 __pycache__/
 *.py[cod]
 *$py.class

@@ -17,6 +17,7 @@ list_data_resp = GroupDto.list_data_resp
 # Add input DTOs if defined
 group_create_dto = GroupDto.group_create
 group_update_dto = GroupDto.group_update
+level_filter_parser = GroupDto.level_filter_parser  # Import the parser for query parameters
 
 
 # Define endpoint for listing all groups and creating new ones
@@ -27,13 +28,15 @@ class GroupList(Resource):
         "List all groups",
         security="Bearer",
         responses={200: ("Success", list_data_resp), 401: "Unauthorized", 403: "Forbidden", 429: "Too Many Requests", 500: "Internal Server Error"},
+        parser=level_filter_parser # Add query parameter parser
     )
     @jwt_required()
     @roles_required('admin', 'teacher',  'student')
     @limiter.limit("50/minute")
     def get(self):
         """ Get a list of all groups """
-        return GroupService.get_all_groups()
+        args = level_filter_parser.parse_args()
+        return GroupService.get_all_groups(args)  # Pass the parsed arguments to the service method
 
     @api.doc(
         "Create a new group",

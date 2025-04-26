@@ -28,6 +28,21 @@ class Admin(Model):
         nullable=False,
     )
 
+    def __init__(
+        self,
+        email,
+        password_hash,
+        phone_number,
+        first_name=None,
+        last_name=None,
+        is_super_admin=False,
+    ):
+        self.email = email
+        self.password = password_hash
+        self.phone_number = phone_number
+        self.first_name = first_name
+        self.last_name = last_name
+        self.is_super_admin = is_super_admin
     def __repr__(self):
         return f"<Admin id={self.id} email={self.email}>"
 
