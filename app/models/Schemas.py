@@ -129,6 +129,7 @@ class SessionSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Session
         load_instance = True
+        include_fk = True
 class MessageSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Message

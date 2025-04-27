@@ -69,7 +69,7 @@ class LevelList(Resource):
     )
     @api.expect(level_create_dto, validate=True)
     @jwt_required()
-    @roles_required("admin")
+    @roles_required("admin","parent")
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_LEVEL_CREATE", "10/minute")
     )  # Use config
@@ -129,7 +129,7 @@ class LevelResource(Resource):
     )
     @api.expect(level_update_dto, validate=True)
     @jwt_required()
-    @roles_required("admin")
+    @roles_required("admin","parent")
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_LEVEL_UPDATE", "30/minute")
     )  # Use config
@@ -157,7 +157,7 @@ class LevelResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin")
+    @roles_required("admin","parent")
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_LEVEL_DELETE", "10/minute")
     )  # Use config

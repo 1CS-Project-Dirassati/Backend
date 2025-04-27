@@ -75,7 +75,7 @@ class SessionList(Resource):
     )
     @api.expect(session_create_dto, validate=True)
     @jwt_required()
-    @roles_required("admin", "teacher")
+    @roles_required("admin", "teacher","parent")
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_SESSION_CREATE", "20/minute")
     )  # Use config
@@ -134,7 +134,7 @@ class SessionResource(Resource):
     )
     @api.expect(session_update_dto, validate=True)
     @jwt_required()
-    @roles_required("admin", "teacher")
+    @roles_required("admin", "teacher","parent")
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_SESSION_UPDATE", "30/minute")
     )  # Use config
@@ -162,7 +162,7 @@ class SessionResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin", "teacher")
+    @roles_required("admin", "teacher","parent")
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_SESSION_DELETE", "10/minute")
     )  # Use config
