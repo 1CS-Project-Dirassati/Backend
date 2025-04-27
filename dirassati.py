@@ -30,16 +30,6 @@ def check_auth():
     return auth and auth.username == USERNAME and auth.password == PASSWORD
 
 
-@app.before_request
-def protect_docs():
-    if request.path.startswith("/swagger") or request.path.startswith("/docs"):
-        if not check_auth():
-            return Response(
-                "Could not verify your access to the documentation.\n"
-                "You have to login with proper credentials",
-                401,
-                {"WWW-Authenticate": 'Basic realm="Login Required"'},
-            )
 
 
 migrate = Migrate(app, db)

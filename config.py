@@ -6,9 +6,13 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
     # Change the secret key in production run.
-    USERNAME = os.environ.get("USERNAME")
-    PASSWORD = os.environ.get("PASSWORD")
+    USERNAME = os.environ.get("USERNAME" , "admin")
+    PASSWORD = os.environ.get("PASSWORD" , "admin")
     SECRET_KEY = os.environ.get("SECRET_KEY", os.urandom(24))
+
+
+    # --- Stripe ---
+    STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
     # --- Flask-Limiter Rate Limits ---
     # Default rate limits per minute for group endpoints
     RATE_LIMIT_GROUP_LIST = "60/minute"  # Allow more frequent listing
@@ -22,7 +26,7 @@ class Config:
     PER_PAGE_GROUPS = 10
     DEBUG = True
     ACCESS_EXPIRES_SECONDS = os.environ.get(
-        "ACCESS_TOKEN_EXPIRES_SECONDS", 60 * 15
+        "ACCESS_TOKEN_EXPIRES_SECONDS", 60 * 150000
     )  # Example: 15 mins
     REFRESH_EXPIRES_DAYS = os.environ.get(
         "REFRESH_TOKEN_EXPIRES_DAYS", 30

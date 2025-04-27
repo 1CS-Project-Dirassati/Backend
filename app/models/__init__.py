@@ -24,6 +24,7 @@ from .Salle import Salle
 from .Semester import Semester
 from .TeachingUnit import TeachingUnit
 from .Teachings import Teachings
+from .Fee import FeeStatus
 
 # importing all schemas for easier access
 from .Schemas import (
@@ -86,4 +87,5 @@ __all__ = [
     "TeacherSchema",
     "TeachingUnitSchema",
     "TeachingsSchema",
+    "FeeStatus",
 ]

@@ -6,13 +6,17 @@ from app.models import Fee, Parent, FeeStatus
 from app import db
 from app.utils import err_resp, message
 
-# Initialize Stripe with your secret key
-stripe.api_key = current_app.config['STRIPE_SECRET_KEY']
+def init_stripe():
+    """Initialize Stripe with the secret key from app config"""
+    stripe.api_key = current_app.config['STRIPE_SECRET_KEY']
 
 class PaymentService:
     @staticmethod
     def create_checkout_session(fee_id, parent_id):
+        print("Creating checkout session chmisouuuuuuuuuuuuuuuuuuuuuuuu")
         """Create a Stripe checkout session for a fee payment"""
+        # Initialize Stripe with current app context
+        init_stripe()
         # Get the fee and verify it belongs to the current parent
         fee = Fee.query.filter(
             Fee.id == fee_id,

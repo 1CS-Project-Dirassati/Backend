@@ -88,6 +88,7 @@ class ParentSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Parent
         load_instance = True
+        load_only = ["password"]
 
 
 class SalleSchema(ma.SQLAlchemyAutoSchema):
