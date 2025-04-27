@@ -1,10 +1,11 @@
-from flask import request
+# Added current_app
+from flask import request, current_app
 from flask_restx import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 # Import shared extensions/decorators
 from app.extensions import limiter
-from app.api.decorators import roles_required  # Adjust path if necessary
+from app.api.decorators import roles_required
 
 # Import teacher-specific modules
 from .service import TeacherService
@@ -17,6 +18,7 @@ list_data_resp = TeacherDto.list_data_resp
 teacher_create_input = TeacherDto.teacher_create_input
 teacher_admin_update_input = TeacherDto.teacher_admin_update_input
 teacher_self_update_input = TeacherDto.teacher_self_update_input
+# Get the filter/pagination parser
 teacher_filter_parser = TeacherDto.teacher_filter_parser
 
 
@@ -25,8 +27,10 @@ def get_current_user_info():
     user_id = get_jwt_identity()
     claims = get_jwt()
     role = claims.get("role")
+    current_app.logger.debug(
+        f"Current user info: ID={user_id}, Role={role}"
+    )  # Log user info
     return user_id, role
-
 
 # --- Route for listing/creating teachers (Admin focused) ---
 @api.route("/")
@@ -36,7 +40,8 @@ class TeacherList(Resource):
         "List teachers (Admin only)",
         security="Bearer",
         parser=teacher_filter_parser,
-        description="Get a list of all teachers. Filterable by module_key. (Admin access required)",
+        # Updated description
+        description="Get a paginated list of all teachers. Filterable by module_key. (Admin access required)",
         responses={
             200: ("Success", list_data_resp),
             401: "Unauthorized",
@@ -46,15 +51,28 @@ class TeacherList(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin")  # Only admins can list all teachers
-    @limiter.limit("50/minute")
+    @roles_required("admin")
+    # Use config for rate limit
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_TEACHER_LIST", "50/minute")
+    )
     def get(self):
-        """Get a list of all teachers (Admin only)"""
-        user_id, role = get_current_user_info()
+        """Get a paginated list of all teachers (Admin only)"""
+        user_id, role = (
+            get_current_user_info()
+        )  # Role needed for service check (belt-and-suspenders)
         args = teacher_filter_parser.parse_args()
+        # Add logging
+        current_app.logger.debug(
+            f"Received GET request for teachers list with args: {args}"
+        )
 
+        # Pass pagination args and role
         return TeacherService.get_all_teachers(
-            module_key=args.get("module_key"), current_user_role=role
+            module_key=args.get("module_key"),
+            page=args.get("page"),
+            per_page=args.get("per_page"),
+            current_user_role=role,
         )
 
     @api.doc(
@@ -72,13 +90,21 @@ class TeacherList(Resource):
     )
     @api.expect(teacher_create_input, validate=True)
     @jwt_required()
-    @roles_required("admin")  # Only admins can create teachers
-    @limiter.limit("10/minute")
+    @roles_required("admin")  # Decorator handles role check
+    # Use config for rate limit
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_TEACHER_CREATE", "10/minute")
+    )
     def post(self):
         """Create a new teacher account (Admin only)"""
-        user_id, role = get_current_user_info()
+        # No need to get user info, decorator handles role
         data = request.get_json()
-        return TeacherService.create_teacher(data, role)
+        # Add logging
+        current_app.logger.debug(
+            f"Received POST request to create teacher with data: {data}"
+        )
+        # Service method no longer needs role
+        return TeacherService.create_teacher(data)
 
 
 # --- Route for specific teacher operations ---
@@ -100,12 +126,20 @@ class TeacherResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin", "teacher")  # Roles allowed to access this endpoint
-    @limiter.limit("100/minute")
-    def get(self, teacher_id):
+    @roles_required("admin", "teacher")  # Decorator handles role check
+    # Use config for rate limit
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_TEACHER_GET", "100/minute")
+    )
+    # Add type hint
+    def get(self, teacher_id: int):
         """Get a specific teacher's data by ID (Admin or self)"""
-        user_id, role = get_current_user_info()
-        # Service layer handles the authorization check
+        # Get user info for record-level access check in service
+        # Add logging
+        current_app.logger.debug(f"Received GET request for teacher ID: {teacher_id}")
+        # Pass user info for record-level check
+        user_id = get_jwt_identity()  # Get the user ID from the JWT token
+        role = get_jwt()["role"]  # Get the role from the JWT token
         return TeacherService.get_teacher_data(teacher_id, user_id, role)
 
     @api.doc(
@@ -118,19 +152,29 @@ class TeacherResource(Resource):
             401: "Unauthorized",
             403: "Forbidden",
             404: "Not Found",
+            409: "Conflict",  # Added 409
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
     )
     @api.expect(teacher_admin_update_input, validate=True)
     @jwt_required()
-    @roles_required("admin")  # Only Admin can use this endpoint
-    @limiter.limit("30/minute")
-    def put(self, teacher_id):
+    @roles_required("admin")  # Decorator handles role check
+    # Use config for rate limit
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_TEACHER_ADMIN_UPDATE", "30/minute")
+    )
+    # Add type hint
+    def put(self, teacher_id: int):
         """Update an existing teacher (Admin only)"""
-        user_id, role = get_current_user_info()
+        # No need to get user info, decorator handles role
         data = request.get_json()
-        return TeacherService.update_teacher_by_admin(teacher_id, data, role)
+        # Add logging
+        current_app.logger.debug(
+            f"Received PUT request by admin for teacher ID {teacher_id} with data: {data}"
+        )
+        # Service method no longer needs role
+        return TeacherService.update_teacher_by_admin(teacher_id, data)
 
     @api.doc(
         "Delete a teacher (Admin only)",
@@ -147,16 +191,25 @@ class TeacherResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin")  # Only Admin can delete
-    @limiter.limit("5/minute")  # Lower limit due to destructive nature & checks
-    def delete(self, teacher_id):
+    @roles_required("admin")  # Decorator handles role check
+    # Use config for rate limit
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_TEACHER_DELETE", "5/minute")
+    )
+    # Add type hint
+    def delete(self, teacher_id: int):
         """Delete a teacher (Admin only) - Fails on dependencies"""
-        user_id, role = get_current_user_info()
-        return TeacherService.delete_teacher(teacher_id, role)
+        # No need to get user info, decorator handles role
+        # Add logging
+        current_app.logger.debug(
+            f"Received DELETE request by admin for teacher ID: {teacher_id}"
+        )
+        # Service method no longer needs role
+        return TeacherService.delete_teacher(teacher_id)
 
 
 # --- Route specifically for teacher managing their own profile ---
-@api.route("/me")  # Endpoint like /api/teachers/me
+@api.route("/me")
 class TeacherProfile(Resource):
 
     @api.doc(
@@ -166,17 +219,26 @@ class TeacherProfile(Resource):
         responses={
             200: ("Success", data_resp),
             401: "Unauthorized",
+            403: "Forbidden",  # Added 403
             404: "Not Found",
             500: "Internal Server Error",
         },
     )
     @jwt_required()
-    @roles_required("teacher")  # Only teachers can access this
-    @limiter.limit("100/minute")
+    @roles_required("teacher")  # Decorator handles role check
+    # Use config for rate limit
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_TEACHER_ME_GET", "100/minute")
+    )
     def get(self):
         """Get own teacher profile"""
-        user_id, role = get_current_user_info()
-        # Use the same get_teacher_data service method, passing own ID
+        # Add logging
+        # Use the same get_teacher_data service method, passing own ID and role
+        user_id = get_jwt_identity()  # Get the user ID from the JWT token
+        role = get_jwt()["role"]  # Get the role from the JWT token
+        current_app.logger.debug(
+            f"Received GET request for own teacher profile (ID: {user_id})"
+        )
         return TeacherService.get_teacher_data(user_id, user_id, role)
 
     @api.doc(
@@ -187,17 +249,26 @@ class TeacherProfile(Resource):
             200: ("Success", data_resp),
             400: "Validation Error/Empty Body",
             401: "Unauthorized",
+            403: "Forbidden",  # Added 403
             404: "Not Found",
+            409: "Conflict",  # Added 409
             500: "Internal Server Error",
         },
     )
     @api.expect(teacher_self_update_input, validate=True)
     @jwt_required()
-    @roles_required("teacher")  # Only teachers can access this
-    @limiter.limit("30/minute")
+    @roles_required("teacher")  # Decorator handles role check
+    # Use config for rate limit
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_TEACHER_ME_UPDATE", "30/minute")
+    )
     def put(self):
         """Update own teacher profile"""
-        user_id, role = get_current_user_info()
+        user_id, _ = get_current_user_info()  # Don't need role here
         data = request.get_json()
+        # Add logging
+        current_app.logger.debug(
+            f"Received PUT request for own teacher profile (ID: {user_id}) with data: {data}"
+        )
         # Call the specific service method for self-update
         return TeacherService.update_own_profile(user_id, data)
