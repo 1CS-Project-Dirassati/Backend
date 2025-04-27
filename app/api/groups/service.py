@@ -4,7 +4,7 @@ from marshmallow import ValidationError
 
 # Import your DB instance and Group model
 from app import db
-from app.models import Group, Level # Import Group and Level models
+from app.models import Group, Level  # Import Group and Level models
 
 # Import shared utilities
 from app.utils import (
@@ -24,52 +24,77 @@ class GroupService:
         """Get group data by its ID"""
         group = Group.query.get(group_id)
         if not group:
-            current_app.logger.info(f"Group with ID {group_id} not found.") # Suggestion: Add logging
+            current_app.logger.info(
+                f"Group with ID {group_id} not found."
+            )  # Suggestion: Add logging
             return err_resp("Group not found!", "group_404", 404)
         try:
             group_data = dump_data(group)
             resp = message(True, "Group data sent successfully")
             resp["group"] = group_data
-            current_app.logger.debug(f"Successfully retrieved group ID {group_id}") # Suggestion: Add logging
+            current_app.logger.debug(
+                f"Successfully retrieved group ID {group_id}"
+            )  # Suggestion: Add logging
             return resp, 200
         except Exception as error:
             current_app.logger.error(
-                f"Error serializing group data for ID {group_id}: {error}", exc_info=True
+                f"Error serializing group data for ID {group_id}: {error}",
+                exc_info=True,
             )
             return internal_err_resp()
 
     @staticmethod
-    def get_all_groups(level_id=None, page=None,per_page=None): # level_id: Optional[int] = None, page: Optional[int] = None) -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
+    def get_all_groups(
+        level_id=None, page=None, per_page=None
+    ):  # level_id: Optional[int] = None, page: Optional[int] = None) -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
         """Get a list of all groups, optionally filtered by level_id and paginated."""
-        page = page or 1 # Suggestion: Ensure page defaults to 1 if None
-        per_page = per_page or 10# Suggestion: Get per_page from config
+        page = page or 1  # Suggestion: Ensure page defaults to 1 if None
+        per_page = per_page or 10  # Suggestion: Get per_page from config
 
         try:
             query = Group.query
 
             # Apply the filter if level_id is provided
             if level_id is not None:
-                 current_app.logger.debug(f"Filtering groups by level_id: {level_id}") # Suggestion: Add logging
-                 level_exists = db.session.query(Level.id).filter_by(id=level_id).scalar() is not None
-                 if not level_exists:
-                     current_app.logger.info(f"Attempted to filter groups by non-existent level_id: {level_id}")
-                     return err_resp("Level specified in filter not found", "level_filter_404", 404) # Or return empty list with 200
+                current_app.logger.debug(
+                    f"Filtering groups by level_id: {level_id}"
+                )  # Suggestion: Add logging
+                level_exists = (
+                    db.session.query(Level.id).filter_by(id=level_id).scalar()
+                    is not None
+                )
+                if not level_exists:
+                    current_app.logger.info(
+                        f"Attempted to filter groups by non-existent level_id: {level_id}"
+                    )
+                    return err_resp(
+                        "Level specified in filter not found", "level_filter_404", 404
+                    )  # Or return empty list with 200
 
-                 query = query.filter(Group.level_id == level_id) # type: ignore[reportGeneralTypeIssues] # Suggestion: Use filter for clarity
-
+                query = query.filter(Group.level_id == level_id)  # type: ignore[reportGeneralTypeIssues] # Suggestion: Use filter for clarity
 
             # Add ordering
-            query = query.order_by(Group.name) # type: ignore[reportGeneralTypeIssues] # Suggestion: Use order_by for consistent ordering
+            query = query.order_by(Group.name)  # type: ignore[reportGeneralTypeIssues] # Suggestion: Use order_by for consistent ordering
 
             # Implement pagination
-            current_app.logger.debug(f"Paginating groups: page={page}, per_page={per_page}") # Suggestion: Add logging
-            paginated_groups = query.paginate(page=page, per_page=per_page, error_out=False)
-            current_app.logger.debug(f"Paginated groups: {paginated_groups.items}") # Suggestion: Add logging
+            current_app.logger.debug(
+                f"Paginating groups: page={page}, per_page={per_page}"
+            )  # Suggestion: Add logging
+            paginated_groups = query.paginate(
+                page=page, per_page=per_page, error_out=False
+            )
+            current_app.logger.debug(
+                f"Paginated groups: {paginated_groups.items}"
+            )  # Suggestion: Add logging
 
             # Serialize the results using dump_data
-            groups_data = dump_data(paginated_groups.items, many=True) # Use .items for paginated list
+            groups_data = dump_data(
+                paginated_groups.items, many=True
+            )  # Use .items for paginated list
 
-            current_app.logger.debug(f"Serialized {len(groups_data)} groups") # Suggestion: Add logging
+            current_app.logger.debug(
+                f"Serialized {len(groups_data)} groups"
+            )  # Suggestion: Add logging
             resp = message(True, "Groups list retrieved successfully")
             # Add pagination metadata to the response
             resp["groups"] = groups_data
@@ -80,7 +105,9 @@ class GroupService:
             resp["has_next"] = paginated_groups.has_next
             resp["has_prev"] = paginated_groups.has_prev
 
-            current_app.logger.debug(f"Successfully retrieved groups page {page}. Total: {paginated_groups.total}") # Suggestion: Add logging
+            current_app.logger.debug(
+                f"Successfully retrieved groups page {page}. Total: {paginated_groups.total}"
+            )  # Suggestion: Add logging
             return resp, 200
 
         except Exception as error:
@@ -93,12 +120,21 @@ class GroupService:
             return internal_err_resp()
 
     @staticmethod
-    def create_group(data: dict): # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
+    def create_group(
+        data: dict,
+    ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
         """Create a new group after validating input data"""
         try:
             # Use load_data utility for validation and deserialization
             # No partial=True needed for creation
-            new_group = load_data(data) # Use util, no instance needed
+
+            if not Level.query.get(data["level_id"]):  # Check if level_id exists
+                raise ValidationError(
+                    {"level_id": ["Level ID does not exist."]},
+                    field_names=["level_id"],
+                )
+
+            new_group = load_data(data)  # Use util, no instance needed
 
             # print("this happens 5") # Suggestion: Replace print with logging
             # current_app.logger.debug(f"Group data validated successfully. Adding to session.") # Suggestion: Add logging
@@ -114,7 +150,7 @@ class GroupService:
             return resp, 201
 
         except ValidationError as err:
-            db.session.rollback() # Ensure rollback on validation error too
+            db.session.rollback()  # Ensure rollback on validation error too
             current_app.logger.warning(
                 f"Validation error creating group: {err.messages}. Data: {data}"
             )
@@ -127,26 +163,38 @@ class GroupService:
             return internal_err_resp()
         except Exception as error:
             db.session.rollback()
-            current_app.logger.error(f"Unexpected error creating group: {error}", exc_info=True)
+            current_app.logger.error(
+                f"Unexpected error creating group: {error}", exc_info=True
+            )
             return internal_err_resp()
 
     @staticmethod
-    def update_group(group_id: int, data: dict): # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
+    def update_group(
+        group_id: int, data: dict
+    ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
         """Update an existing group by ID after validating input data"""
         group = Group.query.get(group_id)
         if not group:
-            current_app.logger.info(f"Attempted to update non-existent group ID: {group_id}") # Suggestion: Add logging
+            current_app.logger.info(
+                f"Attempted to update non-existent group ID: {group_id}"
+            )  # Suggestion: Add logging
             return err_resp("Group not found!", "group_404", 404)
 
         try:
             # Use load_data utility for validation and deserialization into the existing instance
             # Pass partial=True and the group instance
-            updated_group = load_data(data, partial=True, instance=group) # Use util with instance loading
+            updated_group = load_data(
+                data, partial=True, instance=group
+            )  # Use util with instance loading
 
-            current_app.logger.debug(f"Group data validated successfully for update. Committing changes for ID: {group_id}") # Suggestion: Add logging
+            current_app.logger.debug(
+                f"Group data validated successfully for update. Committing changes for ID: {group_id}"
+            )  # Suggestion: Add logging
 
             db.session.commit()
-            current_app.logger.info(f"Group updated successfully for ID: {group_id}") # Suggestion: Add logging
+            current_app.logger.info(
+                f"Group updated successfully for ID: {group_id}"
+            )  # Suggestion: Add logging
 
             # Use dump_data utility for serialization
             group_data = dump_data(updated_group)
@@ -178,25 +226,37 @@ class GroupService:
         """Delete a group by ID"""
         group = Group.query.get(group_id)
         if not group:
-            current_app.logger.info(f"Attempted to delete non-existent group ID: {group_id}") # Suggestion: Add logging
+            current_app.logger.info(
+                f"Attempted to delete non-existent group ID: {group_id}"
+            )  # Suggestion: Add logging
             return err_resp("Group not found!", "group_404", 404)
         try:
-            current_app.logger.debug(f"Deleting group ID: {group_id}") # Suggestion: Add logging
+            current_app.logger.debug(
+                f"Deleting group ID: {group_id}"
+            )  # Suggestion: Add logging
             db.session.delete(group)
             db.session.commit()
-            current_app.logger.info(f"Group deleted successfully: ID {group_id}") # Suggestion: Add logging
+            current_app.logger.info(
+                f"Group deleted successfully: ID {group_id}"
+            )  # Suggestion: Add logging
             return None, 204
         except SQLAlchemyError as error:
             db.session.rollback()
             # Check for specific constraint violation if possible/needed
             if "FOREIGN KEY constraint failed" in str(error):
-                current_app.logger.warning(f"Attempted to delete group {group_id} with existing dependencies: {error}")
-                return err_resp("Cannot delete group. It may have associated students or other dependencies.", "delete_conflict", 409)
+                current_app.logger.warning(
+                    f"Attempted to delete group {group_id} with existing dependencies: {error}"
+                )
+                return err_resp(
+                    "Cannot delete group. It may have associated students or other dependencies.",
+                    "delete_conflict",
+                    409,
+                )
             current_app.logger.error(
                 f"Database error deleting group {group_id}: {error}", exc_info=True
             )
             return err_resp(
-                f"Could not delete group due to a database error.", # Simplified message
+                f"Could not delete group due to a database error.",  # Simplified message
                 "delete_error_db",
                 409,
             )
@@ -206,4 +266,3 @@ class GroupService:
                 f"Unexpected error deleting group {group_id}: {error}", exc_info=True
             )
             return internal_err_resp()
-

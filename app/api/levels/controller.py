@@ -1,10 +1,10 @@
-from flask import request
+from flask import request, current_app  # Added current_app
 from flask_restx import Resource
 from flask_jwt_extended import jwt_required
 
 # Import shared extensions/decorators
 from app.extensions import limiter
-from app.api.decorators import roles_required  # Assuming this is the correct path
+from app.api.decorators import roles_required
 
 # Import level-specific modules
 from .service import LevelService
@@ -16,6 +16,9 @@ data_resp = LevelDto.data_resp
 list_data_resp = LevelDto.list_data_resp
 level_create_dto = LevelDto.level_create
 level_update_dto = LevelDto.level_update
+level_filter_parser = (
+    LevelDto.level_filter_parser  # Use the parser for query parameters
+)
 
 
 # Define endpoint for listing all levels and creating new ones
@@ -24,20 +27,32 @@ class LevelList(Resource):
 
     @api.doc(
         "List all levels",
-        security="Bearer",  # Apply security if needed, even for GET
+        security="Bearer",
         responses={
             200: ("Success", list_data_resp),
             401: "Unauthorized",
+            403: "Forbidden",
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
+        parser=level_filter_parser,  # Add query parameter parser
     )
-    @jwt_required()  # Most likely all users need to see levels
-    @roles_required("admin", "teacher", "student", "parent")  # Adjust roles as needed
-    @limiter.limit("100/minute")  # Allow frequent access
+    @jwt_required()
+    @roles_required("admin", "teacher", "student", "parent")
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_LEVEL_LIST", "100/minute")
+    )  # Use config
     def get(self):
-        """Get a list of all academic levels"""
-        return LevelService.get_all_levels()
+        """Get a list of all academic levels (paginated)"""
+        args = level_filter_parser.parse_args()
+        page = args.get("page")
+        per_page = args.get("per_page")
+        current_app.logger.debug(
+            f"Received GET request for levels with args: {args}"
+        )  # Add logging
+        return LevelService.get_all_levels(
+            page=page, per_page=per_page
+        )  # Pass pagination args
 
     @api.doc(
         "Create a new level",
@@ -54,11 +69,16 @@ class LevelList(Resource):
     )
     @api.expect(level_create_dto, validate=True)
     @jwt_required()
-    @roles_required("admin")  # Only admins can create levels
-    @limiter.limit("10/minute")
+    @roles_required("admin")
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_LEVEL_CREATE", "10/minute")
+    )  # Use config
     def post(self):
         """Create a new academic level"""
         data = request.get_json()
+        current_app.logger.debug(
+            f"Received POST request to create level with data: {data}"
+        )  # Add logging
         return LevelService.create_level(data)
 
 
@@ -73,16 +93,24 @@ class LevelResource(Resource):
         responses={
             200: ("Success", data_resp),
             401: "Unauthorized",
+            403: "Forbidden",  # Added 403
             404: "Not Found",
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
     )
-    @jwt_required()  # Most likely all users need to see specific levels
-    @roles_required("admin", "teacher", "student", "parent")  # Adjust roles as needed
-    @limiter.limit("100/minute")
-    def get(self, level_id):
+    @jwt_required()
+    @roles_required("admin", "teacher", "student", "parent")
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_LEVEL_GET", "100/minute")
+    )  # Use config
+    def get(
+        self, level_id: int
+    ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
         """Get a specific level's data by its ID"""
+        current_app.logger.debug(
+            f"Received GET request for level ID: {level_id}"
+        )  # Add logging
         return LevelService.get_level_data(level_id)
 
     @api.doc(
@@ -99,13 +127,20 @@ class LevelResource(Resource):
             500: "Internal Server Error",
         },
     )
-    @api.expect(level_update_dto, validate=True)  # Use validate=True for basic checks
+    @api.expect(level_update_dto, validate=True)
     @jwt_required()
-    @roles_required("admin")  # Only admins can update levels
-    @limiter.limit("30/minute")
-    def put(self, level_id):
-        """Update an existing academic level"""
+    @roles_required("admin")
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_LEVEL_UPDATE", "30/minute")
+    )  # Use config
+    def put(
+        self, level_id: int
+    ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
+        """Update an existing academic level (full update)"""
         data = request.get_json()
+        current_app.logger.debug(
+            f"Received PUT request for level ID {level_id} with data: {data}"
+        )  # Add logging
         return LevelService.update_level(level_id, data)
 
     @api.doc(
@@ -122,8 +157,15 @@ class LevelResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin")  # Only admins can delete levels
-    @limiter.limit("10/minute")
-    def delete(self, level_id):
+    @roles_required("admin")
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_LEVEL_DELETE", "10/minute")
+    )  # Use config
+    def delete(
+        self, level_id: int
+    ):  # -> Tuple[None, int]: # Suggestion: Add type hints
         """Delete an academic level"""
-        return LevelService.delete_level(level_id)  # Returns (None, 204) on success
+        current_app.logger.debug(
+            f"Received DELETE request for level ID: {level_id}"
+        )  # Add logging
+        return LevelService.delete_level(level_id)
