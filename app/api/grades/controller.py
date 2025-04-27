@@ -1,4 +1,5 @@
-from flask import request
+# Added current_app
+from flask import request, current_app
 from flask_restx import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
@@ -16,6 +17,7 @@ data_resp = NoteDto.data_resp
 list_data_resp = NoteDto.list_data_resp
 note_create_input = NoteDto.note_create_input
 note_update_input = NoteDto.note_update_input
+# Get the filter/pagination parser
 note_filter_parser = NoteDto.note_filter_parser
 
 
@@ -24,8 +26,8 @@ def get_current_user_info():
     user_id = get_jwt_identity()
     claims = get_jwt()
     role = claims.get("role")
-    # is_super = claims.get('is_super_admin', False) # If needed for admin checks
-    return user_id, role  # , is_super
+    current_app.logger.debug(f"Current user info: ID={user_id}, Role={role}") # Log user info
+    return user_id, role
 
 
 # --- Route for listing/creating notes ---
@@ -36,7 +38,8 @@ class NoteList(Resource):
         "List notes (grades)",
         security="Bearer",
         parser=note_filter_parser,
-        description="Get a list of notes (grades). Filterable. Access restricted by role (Admins see all, Teachers see own/relevant, Parents see own children, Students see self).",
+        # Updated description
+        description="Get a paginated list of notes (grades). Filterable. Access restricted by role (Admins see all, Teachers see own/relevant, Parents see own children, Students see self).",
         responses={
             200: ("Success", list_data_resp),
             401: "Unauthorized",
@@ -47,20 +50,25 @@ class NoteList(Resource):
         },
     )
     @jwt_required()
-    # Allow all authenticated roles to hit the endpoint; service layer handles fine-grained access
     @roles_required("admin", "teacher", "parent", "student")
-    @limiter.limit("60/minute")
+    # Use config for rate limit
+    @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_NOTE_LIST", "60/minute"))
     def get(self):
-        """Get a list of notes, filtered by query params and user role"""
+        """Get a list of notes, filtered by query params, user role, and paginated"""
         user_id, role = get_current_user_info()
         args = note_filter_parser.parse_args()
+        # Add logging
+        current_app.logger.debug(
+            f"Received GET request for notes list with args: {args}"
+        )
 
+        # Pass filter, pagination, and user info to service for scoping
         return NoteService.get_all_notes(
             student_id=args.get("student_id"),
             module_id=args.get("module_id"),
-            teacher_id=args.get(
-                "teacher_id"
-            ),  # Service checks role before applying this
+            teacher_id=args.get("teacher_id"),
+            page=args.get('page'), # Pass pagination arg
+            per_page=args.get('per_page'), # Pass pagination arg
             current_user_id=user_id,
             current_user_role=role,
         )
@@ -81,12 +89,19 @@ class NoteList(Resource):
     )
     @api.expect(note_create_input, validate=True)
     @jwt_required()
-    @roles_required("admin", "teacher")  # Only these roles can create
-    @limiter.limit("30/minute")
+    @roles_required("admin", "teacher") # Decorator handles role check
+    # Use config for rate limit
+    @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_NOTE_CREATE", "30/minute"))
     def post(self):
         """Create a new note (grade)"""
-        user_id, role = get_current_user_info()
+        user_id, role = get_current_user_info() # Get user info for service logic
         data = request.get_json()
+        # Add logging
+        current_app.logger.debug(
+            f"Received POST request to create note with data: {data}"
+        )
+        user_id = get_jwt_identity()
+        role = get_jwt()["role"]
         # Service uses user_id as teacher_id if role is teacher
         return NoteService.create_note(data, user_id, role)
 
@@ -110,14 +125,20 @@ class NoteResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required(
-        "admin", "teacher", "parent", "student"
-    )  # Allow all roles to attempt access
-    @limiter.limit("100/minute")
-    def get(self, note_id):
-        """Get a specific note's data by ID (with access control)"""
-        user_id, role = get_current_user_info()
-        # Service layer handles the authorization check
+    @roles_required("admin", "teacher", "parent", "student") # Decorator handles base role check
+    # Use config for rate limit
+    @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_NOTE_GET", "100/minute"))
+    # Add type hint
+    def get(self, note_id: int):
+        """Get a specific note's data by ID (with record-level access control)"""
+        # Get user info for record-level access check in service
+        # Add logging
+        current_app.logger.debug(
+            f"Received GET request for note ID: {note_id}"
+        )
+        user_id = get_jwt_identity()
+        role = get_jwt()["role"]
+        # Pass user info for record-level check
         return NoteService.get_note_data(note_id, user_id, role)
 
     @api.doc(
@@ -130,19 +151,29 @@ class NoteResource(Resource):
             401: "Unauthorized",
             403: "Forbidden",
             404: "Not Found",
+            409: "Conflict", # Added 409
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
     )
     @api.expect(note_update_input, validate=True)
     @jwt_required()
-    @roles_required("admin", "teacher")  # Only these roles can attempt update
-    @limiter.limit("40/minute")
-    def patch(self, note_id):  # Use PATCH for partial updates
+    @roles_required("admin", "teacher") # Decorator handles base role check
+    # Use config for rate limit
+    @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_NOTE_UPDATE", "40/minute"))
+    # Add type hint
+    def patch(self, note_id: int):
         """Update an existing note (value/comment)"""
+        # Get user info for record-level access check in service
         user_id, role = get_current_user_info()
         data = request.get_json()
+        # Add logging
+        current_app.logger.debug(
+            f"Received PATCH request for note ID {note_id} with data: {data}"
+        )
         # Service layer handles authorization (is admin or original teacher)
+        user_id = get_jwt_identity()
+        role = get_jwt()["role"]
         return NoteService.update_note(note_id, data, user_id, role)
 
     @api.doc(
@@ -159,10 +190,19 @@ class NoteResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin", "teacher")  # Only these roles can attempt delete
-    @limiter.limit("20/minute")
-    def delete(self, note_id):
+    @roles_required("admin", "teacher") # Decorator handles base role check
+    # Use config for rate limit
+    @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_NOTE_DELETE", "20/minute"))
+    # Add type hint
+    def delete(self, note_id: int):
         """Delete a note (grade)"""
+        # Get user info for record-level access check in service
         user_id, role = get_current_user_info()
+        # Add logging
+        current_app.logger.debug(
+            f"Received DELETE request for note ID: {note_id}"
+        )
         # Service layer handles authorization (is admin or original teacher)
+        user_id = get_jwt_identity()
+        role = get_jwt()["role"]
         return NoteService.delete_note(note_id, user_id, role)
