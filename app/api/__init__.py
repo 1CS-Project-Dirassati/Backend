@@ -1,7 +1,7 @@
 from flask_restx import Api
 from flask import Blueprint
 
-from .groups.controller import api as groups_ns
+from .groups import groups_ns
 from .levels.controller import api as levels_ns
 from .sessions.controller import api as sessions_ns
 from .students.controller import api as students_ns

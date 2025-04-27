@@ -51,6 +51,7 @@ class GroupSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Group
         load_instance = True
+        include_fk = True
 
 
 class LessonSchema(ma.SQLAlchemyAutoSchema):

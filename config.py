@@ -9,7 +9,18 @@ class Config:
     USERNAME = os.environ.get("USERNAME")
     PASSWORD = os.environ.get("PASSWORD")
     SECRET_KEY = os.environ.get("SECRET_KEY", os.urandom(24))
-    DEBUG = False
+    # --- Flask-Limiter Rate Limits ---
+# Default rate limits per minute for group endpoints
+    RATE_LIMIT_GROUP_LIST = "60/minute"   # Allow more frequent listing
+    RATE_LIMIT_GROUP_CREATE = "20/minute"  # Moderate creation limit
+    RATE_LIMIT_GROUP_GET = "100/minute"  # Allow frequent fetching of single items
+    RATE_LIMIT_GROUP_UPDATE = "30/minute"  # Moderate update limit
+    RATE_LIMIT_GROUP_DELETE = "15/minute"  # Stricter deletion limit
+
+# --- Pagination ---
+# Default number of items per page for paginated responses
+    PER_PAGE_GROUPS = 10
+    DEBUG = True
     ACCESS_EXPIRES_SECONDS = os.environ.get(
         "ACCESS_TOKEN_EXPIRES_SECONDS", 60 * 15
     )  # Example: 15 mins
