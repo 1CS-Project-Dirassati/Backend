@@ -1,18 +1,50 @@
-# Assuming ParentSchema exists and excludes password on dump
+# Import ParentSchema and ValidationError
 from app.models.Schemas import ParentSchema
+from marshmallow import ValidationError
 
 
-def load_data(parent_db_obj, many=False):
+def dump_data(db_obj, many=False):
     """
-    Load parent data using the ParentSchema. Excludes password.
+    Serialize database object(s) using the ParentSchema. Excludes password.
 
     Parameters:
-        parent_db_obj: A Parent SQLAlchemy object or a list of them.
-        many: Boolean indicating if parent_db_obj is a list.
+        db_obj: A Parent SQLAlchemy object or a list of them.
+        many: Boolean indicating if db_obj is a list.
     Returns:
         A dictionary or list of dictionaries representing the parent(s).
     """
-    # Ensure your ParentSchema excludes 'password' field during serialization (dump)
+    # Ensure ParentSchema excludes 'password' field during serialization (dump)
+    # Configure in Schema definition: exclude=('password',)
     parent_schema = ParentSchema(many=many)
-    data = parent_schema.dump(parent_db_obj)
+    data = parent_schema.dump(db_obj)
     return data
+
+
+# --- Added standard load_data function ---
+def load_data(data: dict, many=False, partial=False, instance=None):
+    """
+    Load (validate and deserialize) data using the ParentSchema, optionally into an existing instance.
+
+    Parameters:
+        data: A dictionary or list of dictionaries representing parent data.
+        many: Boolean indicating if data is a list.
+        partial: Boolean indicating if partial loading (like for updates) is allowed.
+                 Ensure the schema correctly handles partial loading, potentially
+                 excluding fields not meant for update (like email, password, verification status).
+        instance: An existing SQLAlchemy object (or list) to load data into.
+                  Required for updates to work correctly with SQLAlchemy session tracking.
+    Returns:
+        A Parent SQLAlchemy object or a list of them (either new or the updated instance).
+        *Note*: Assumes schema's load returns a model instance. Adjust if needed for creation.
+    Raises:
+        ValidationError: If the input data is invalid according to the schema.
+    """
+    # Instantiate the schema, passing 'many' and 'partial' flags.
+    # Schema definition should handle field exclusion (e.g., password load_only=True)
+    # and potentially which fields are allowed during partial updates (via exclude in constructor or schema meta).
+    parent_schema = ParentSchema(many=many, partial=partial)
+
+    # Deserialize the dictionary data into SQLAlchemy object(s).
+    # Pass the instance if provided. Raise ValidationError if data is invalid.
+    loaded_data = parent_schema.load(data, instance=instance, partial=partial)
+    return loaded_data
