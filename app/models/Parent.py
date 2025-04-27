@@ -1,7 +1,7 @@
 from app import db
 from . import Column, Model, relationship
 from datetime import datetime, timezone
-from werkzeug.security import  check_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 class Parent(Model):
@@ -53,9 +53,8 @@ class Parent(Model):
         first_name=None,
         last_name=None,
     ):
-
         self.email = email
-        self.password = password
+        self.password = generate_password_hash(password)
         self.phone_number = phone_number
         self.first_name = first_name
         self.last_name = last_name
