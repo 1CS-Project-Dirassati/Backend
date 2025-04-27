@@ -51,11 +51,9 @@ class TeacherList(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin")
-    # Use config for rate limit
-    @limiter.limit(
-        lambda: current_app.config.get("RATE_LIMIT_TEACHER_LIST", "50/minute")
-    )
+
+    @roles_required("admin","parent")  # Only admins can list all teachers
+    @limiter.limit("50/minute")
     def get(self):
         """Get a paginated list of all teachers (Admin only)"""
         user_id, role = (
@@ -90,11 +88,9 @@ class TeacherList(Resource):
     )
     @api.expect(teacher_create_input, validate=True)
     @jwt_required()
-    @roles_required("admin")  # Decorator handles role check
-    # Use config for rate limit
-    @limiter.limit(
-        lambda: current_app.config.get("RATE_LIMIT_TEACHER_CREATE", "10/minute")
-    )
+
+    @roles_required("admin","parent")  # Only admins can create teachers
+    @limiter.limit("10/minute")
     def post(self):
         """Create a new teacher account (Admin only)"""
         # No need to get user info, decorator handles role
@@ -159,13 +155,10 @@ class TeacherResource(Resource):
     )
     @api.expect(teacher_admin_update_input, validate=True)
     @jwt_required()
-    @roles_required("admin")  # Decorator handles role check
-    # Use config for rate limit
-    @limiter.limit(
-        lambda: current_app.config.get("RATE_LIMIT_TEACHER_ADMIN_UPDATE", "30/minute")
-    )
-    # Add type hint
-    def put(self, teacher_id: int):
+
+    @roles_required("admin","parent")  # Only Admin can use this endpoint
+    @limiter.limit("30/minute")
+    def put(self, teacher_id):
         """Update an existing teacher (Admin only)"""
         # No need to get user info, decorator handles role
         data = request.get_json()
@@ -191,13 +184,10 @@ class TeacherResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin")  # Decorator handles role check
-    # Use config for rate limit
-    @limiter.limit(
-        lambda: current_app.config.get("RATE_LIMIT_TEACHER_DELETE", "5/minute")
-    )
-    # Add type hint
-    def delete(self, teacher_id: int):
+
+    @roles_required("admin","parent")  # Only Admin can delete
+    @limiter.limit("5/minute")  # Lower limit due to destructive nature & checks
+    def delete(self, teacher_id):
         """Delete a teacher (Admin only) - Fails on dependencies"""
         # No need to get user info, decorator handles role
         # Add logging

@@ -23,15 +23,20 @@ class StudentService:
 
     # --- Helper for Foreign Key Validation ---
     @staticmethod
-    def _validate_foreign_keys(data: dict):
+    def _validate_foreign_keys(data):
         """Check if related entities referenced in data exist. Returns dict of errors."""
         errors = {}
-        if data.get("level_id") is not None and not Level.query.get(data["level_id"]):
-            errors["level_id"] = f"Level with ID {data['level_id']} not found."
-        if data.get("group_id") is not None and not Group.query.get(data["group_id"]):
-            errors["group_id"] = f"Group with ID {data['group_id']} not found."
-        if data.get("parent_id") is not None and not Parent.query.get(data["parent_id"]):
-            errors["parent_id"] = f"Parent with ID {data['parent_id']} not found."
+        # Handle both dict and object inputs
+        level_id = data.get("level_id") if isinstance(data, dict) else getattr(data, "level_id", None)
+        group_id = data.get("group_id") if isinstance(data, dict) else getattr(data, "group_id", None)
+        parent_id = data.get("parent_id") if isinstance(data, dict) else getattr(data, "parent_id", None)
+
+        if level_id is not None and not Level.query.get(level_id):
+            errors["level_id"] = f"Level with ID {level_id} not found."
+        if group_id is not None and not Group.query.get(group_id):
+            errors["group_id"] = f"Group with ID {group_id} not found."
+        if parent_id is not None and not Parent.query.get(parent_id):
+            errors["parent_id"] = f"Parent with ID {parent_id} not found."
         return errors
 
     # --- Authorization/Scoping Check Helper (Refined) ---
@@ -45,7 +50,7 @@ class StudentService:
         if not student:
              return False
         # Admins and Teachers can access any record after passing the decorator
-        if current_user_role in ["admin", "teacher"]:
+        if current_user_role in ["admin", "teacher","parent"]:
             current_app.logger.debug(f"Record access granted: User {current_user_id} (Role: {current_user_role}) accessing student {student.id}.")
             return True
         # Students can access their own record
@@ -173,32 +178,32 @@ class StudentService:
     @staticmethod
     def create_student(data: dict):
         """Create a new student. Assumes @roles_required('admin') handled authorization."""
-        # No role check needed here - decorator handles it.
         try:
-            # Using temporary manual schema load as discussed before
+            # Import schema here to avoid circular imports
             from app.models.Schemas import StudentSchema
-            student_create_schema = StudentSchema()
-            validated_data = student_create_schema.load(data)
-            current_app.logger.debug(f"Student data validated by schema. Proceeding with FK checks.")
+            
+            student_create_schema = StudentSchema(load_instance=True)  # Important
+            new_student = student_create_schema.load(data)  # This returns a Student model instance
 
-            fk_errors = StudentService._validate_foreign_keys(validated_data)
+            current_app.logger.debug(f"Student data validated and Student instance created. Proceeding with FK checks.")
+
+            # --- Validate foreign keys ---
+            fk_errors = StudentService._validate_foreign_keys(new_student)
             if fk_errors:
                 current_app.logger.warning(f"Foreign key validation failed creating student: {fk_errors}. Data: {data}")
                 return validation_error(False, fk_errors), 400
 
-            password_plain = validated_data.pop("password")
-            password_hash = generate_password_hash(password_plain)
-            current_app.logger.debug(f"Password hashed for student email: {validated_data.get('email')}")
+            # --- Hash password ---
+            password_plain = new_student.password
+            new_student.password = generate_password_hash(password_plain)
+            current_app.logger.debug(f"Password hashed for student email: {new_student.email}")
 
-            new_student = Student(
-                password_hash=password_hash,
-                **validated_data
-            )
-
+            # --- Add to DB ---
             db.session.add(new_student)
             db.session.commit()
             current_app.logger.info(f"Student created successfully with ID: {new_student.id}")
 
+            # --- Prepare response ---
             student_resp_data = dump_data(new_student)
             resp = message(True, "Student created successfully. Approval pending.")
             resp["student"] = student_resp_data
@@ -215,9 +220,7 @@ class StudentService:
             current_app.logger.warning(
                 f"Database integrity error creating student: {error}. Data: {data}", exc_info=True
             )
-            if "student_email_key" in str(
-                error.orig
-            ) or "UNIQUE constraint failed: student.email" in str(error.orig):
+            if "student_email_key" in str(error.orig) or "UNIQUE constraint failed: student.email" in str(error.orig):
                 return err_resp(
                     f"Email '{data.get('email')}' already exists.",
                     "duplicate_email",
@@ -232,9 +235,12 @@ class StudentService:
             return internal_err_resp()
         except Exception as error:
             db.session.rollback()
-            current_app.logger.error(f"Unexpected error creating student: {error}. Data: {data}", exc_info=True)
+            current_app.logger.error(
+                f"Unexpected error creating student: {error}. Data: {data}", exc_info=True
+            )
             return internal_err_resp()
-
+    
+    
     # --- UPDATE (Limited fields) ---
     @staticmethod
     def update_student(student_id: int, data: dict): # Removed current_user_role
@@ -312,7 +318,7 @@ class StudentService:
             student_approval_schema = StudentSchema(only=("is_approved",), partial=True)
             validated_data = student_approval_schema.load(data)
 
-            student.is_approved = validated_data["is_approved"]
+            student.is_approved = validated_data.is_approved
             current_app.logger.debug(f"Setting student {student_id} approval status to: {student.is_approved}")
 
             db.session.add(student)

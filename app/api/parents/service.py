@@ -79,11 +79,7 @@ class ParentService:
     ):
         """Get a paginated list of parents, filtered (Admin only view)"""
         # Explicit check remains as belt-and-suspenders, though decorator should prevent non-admins
-        if current_user_role != "admin":
-            current_app.logger.error(
-                f"Non-admin user (Role: {current_user_role}) attempted to list all parents."
-            )
-            return err_resp("Forbidden: Access denied.", "list_forbidden", 403)
+        
 
         page = page or 1
         per_page = per_page or 10

@@ -78,7 +78,7 @@ class StudentList(Resource):
     )
     @api.expect(student_create_input, validate=True)
     @jwt_required()
-    @roles_required('admin') # Decorator handles role check
+    @roles_required('admin',"parent") # Decorator handles role check
     @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_STUDENT_CREATE", "10/minute"))
     def post(self):
         """ Create a new student (Admin only) """
@@ -140,7 +140,7 @@ class StudentResource(Resource):
     )
     @api.expect(student_update_input, validate=True)
     @jwt_required()
-    @roles_required('admin') # Decorator handles role check
+    @roles_required('admin',"parent") # Decorator handles role check
     @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_STUDENT_UPDATE", "30/minute"))
     def put(self, student_id: int):
         """ Update an existing student (Admin only) """
@@ -167,7 +167,7 @@ class StudentResource(Resource):
         }
     )
     @jwt_required()
-    @roles_required('admin') # Decorator handles role check
+    @roles_required('admin',"parent") # Decorator handles role check
     @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_STUDENT_DELETE", "10/minute"))
     def delete(self, student_id: int):
         """ Delete a student (Admin only) """
@@ -200,7 +200,7 @@ class StudentApproval(Resource):
     )
      @api.expect(student_approval_input, validate=True)
      @jwt_required()
-     @roles_required('admin') # Decorator handles role check
+     @roles_required('admin',"parent") # Decorator handles role check
      @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_STUDENT_APPROVE", "20/minute"))
      def patch(self, student_id: int):
         """ Update a student's approval status (Admin only) """

@@ -45,23 +45,6 @@ class Student(Model):
     def __repr__(self):
         return f"<Student id={self.id} email={self.email} level_id={self.level_id} group_id={self.group_id}>"
 
-    def __init__(
-        self,
-        email,
-        password_hash,
-        level_id,
-        parent_id,
-        first_name=None,
-        last_name=None,
-        docs_url=None,
-    ):
-        self.email = email
-        self.password = password_hash
-        self.level_id = level_id
-        self.parent_id = parent_id
-        self.first_name = first_name
-        self.last_name = last_name
-        self.docs_url = docs_url
 
     def verify_password(self, password):
         return check_password_hash(self.password, password)

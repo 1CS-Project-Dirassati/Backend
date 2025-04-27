@@ -107,7 +107,8 @@ class StudentSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Student
         load_instance = True
-
+        include_fk=True
+        load_only = ["password"]
 
 class TeacherSchema(ma.SQLAlchemyAutoSchema):
     class Meta:

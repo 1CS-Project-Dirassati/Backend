@@ -52,7 +52,7 @@ class ParentList(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin")
+    @roles_required("admin","parent")
     # Use config for rate limit
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_PARENT_LIST", "50/minute")
@@ -92,7 +92,7 @@ class ParentList(Resource):
     )
     @api.expect(parent_create_input, validate=True)
     @jwt_required()
-    @roles_required("admin")  # Decorator handles role check
+    @roles_required("admin","parent")  # Decorator handles role check
     # Use config for rate limit
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_PARENT_CREATE", "10/minute")
@@ -161,7 +161,7 @@ class ParentResource(Resource):
     )
     @api.expect(parent_admin_update_input, validate=True)
     @jwt_required()
-    @roles_required("admin")  # Decorator handles role check
+    @roles_required("admin","parent")  # Decorator handles role check
     # Use config for rate limit
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_PARENT_ADMIN_UPDATE", "30/minute")
@@ -193,7 +193,7 @@ class ParentResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin")  # Decorator handles role check
+    @roles_required("admin","parent")  # Decorator handles role check
     # Use config for rate limit
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_PARENT_DELETE", "5/minute")
