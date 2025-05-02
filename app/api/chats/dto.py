@@ -7,7 +7,7 @@ class ChatDto:
 
     # Define the namespace
     api = Namespace(
-        "chat", description="Chat conversation related operations."
+        "chats", description="Chat conversation related operations."
     )  # Changed from 'chats'
 
     # --- Parser for Query Parameters (Filters and Pagination) ---

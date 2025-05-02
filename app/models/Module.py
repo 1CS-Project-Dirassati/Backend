@@ -17,7 +17,7 @@ class Module(Model):
     # Relationships
     teacher = relationship("Teacher", back_populates="modules")
     level_associations = relationship(
-        "LevelModuleAssociation", back_populates="module", cascade="all, delete-orphan"
+        "TeachingUnit", back_populates="module", cascade="all, delete-orphan"
     )
     sessions = relationship("Session", back_populates="module")
     cours = relationship("Cours", back_populates="module", cascade="all, delete-orphan")
