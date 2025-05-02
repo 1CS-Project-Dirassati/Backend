@@ -24,8 +24,10 @@ from .Salle import Salle
 from .Semester import Semester
 from .TeachingUnit import TeachingUnit
 from .Teachings import Teachings
+from .Notification import NotificationType
 
 # importing all schemas for easier access
+NotificationType = NotificationType
 from .Schemas import (
     AdminSchema,
     AbsenceSchema,
@@ -86,4 +88,5 @@ __all__ = [
     "TeacherSchema",
     "TeachingUnitSchema",
     "TeachingsSchema",
+    "NotificationType",
 ]
