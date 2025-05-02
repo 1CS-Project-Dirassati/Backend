@@ -7,7 +7,7 @@ class MessageDto:
 
     # Define the namespace
     api = Namespace(
-        "message", description="Chat message related operations."
+        "messages", description="Chat message related operations."
     )  # Changed from 'messages'
 
     # --- Parser for Query Parameters (Filters and Pagination) ---
