@@ -10,6 +10,8 @@ from .teachers.controller import api as teachers_ns
 from .admins.controller import api as admins_ns
 from .grades.controller import api as grades_ns
 from .payment.controller import api as payments_ns
+from .semesters.controller import api as semesters_ns
+
 # Import controller APIs as namespaces.
 api_bp = Blueprint("api", __name__)
 authorizations = {"Bearer": {"type": "apiKey", "in": "header", "name": "Authorization"}}
@@ -32,3 +34,4 @@ api.add_namespace(teachers_ns)
 api.add_namespace(admins_ns)
 api.add_namespace(grades_ns)
 api.add_namespace(payments_ns)
+api.add_namespace(semesters_ns)
