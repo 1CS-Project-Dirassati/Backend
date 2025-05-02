@@ -114,6 +114,8 @@ class TeacherSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Teacher
         load_instance = True
+        include_fk = True
+        load_only = ["password"]
 
 
 class TeachingsSchema(ma.SQLAlchemyAutoSchema):

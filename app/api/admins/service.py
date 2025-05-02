@@ -87,6 +87,7 @@ class AdminService:
         current_user_is_super=False,  # Keep for explicit check
     ):
         """Get a paginated list of admins, filtered (Super Admin only view)"""
+        print(AdminService._is_super_admin(current_user_is_super), 'hahahahaha')
         if not AdminService._is_super_admin(current_user_is_super):
             current_app.logger.error(
                 f"Non-super admin user attempted to list all admins."

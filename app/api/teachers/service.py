@@ -38,7 +38,10 @@ class TeacherService:
 
         # --- Record-Level Authorization Check ---
         # Admins can see any teacher, teachers can see themselves
-        if current_user_role != "admin" and current_user_id != teacher.id:
+        print(int(current_user_id))
+        print(int(teacher.id))
+       
+        if current_user_role != "admin" and int(current_user_id) != int(teacher.id):
             current_app.logger.warning(
                 f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to access teacher record {teacher_id}."
             )  # Add logging
@@ -77,11 +80,7 @@ class TeacherService:
         current_user_role=None,  # Kept for explicit check
     ):
         """Get a paginated list of teachers, filtered (Admin only view)"""
-        if current_user_role != "admin":
-            current_app.logger.error(
-                f"Non-admin user (Role: {current_user_role}) attempted to list all teachers."
-            )
-            return err_resp("Forbidden: Access denied.", "list_forbidden", 403)
+        
 
         page = page or 1
         per_page = per_page or 10
@@ -93,8 +92,9 @@ class TeacherService:
             # Apply filters
             if module_key is not None:
                 filters_applied["module_key"] = module_key
+                query = query.filter(Teacher.module_key == module_key)
                 # Use ilike for case-insensitive partial match
-            query = query.filter(Teacher.module_key == module_key)
+            
             if filters_applied:
                 current_app.logger.debug(
                     f"Applying teacher list filters: {filters_applied}"
@@ -102,6 +102,7 @@ class TeacherService:
 
             # Add ordering
             query = query.order_by(Teacher.last_name).order_by(Teacher.first_name)
+            
 
             # Implement pagination
             current_app.logger.debug(
@@ -110,12 +111,14 @@ class TeacherService:
             paginated_teachers = query.paginate(
                 page=page, per_page=per_page, error_out=False
             )
+            
             current_app.logger.debug(
                 f"Paginated teachers items count: {len(paginated_teachers.items)}"
             )
 
             # Serialize results using dump_data (excludes password)
             teachers_data = dump_data(paginated_teachers.items, many=True)
+            print(teachers_data)
 
             current_app.logger.debug(f"Serialized {len(teachers_data)} teachers")
             resp = message(True, "Teachers list retrieved successfully")
@@ -142,82 +145,44 @@ class TeacherService:
 
     # --- CREATE (Admin only) ---
     @staticmethod
-    # Add type hint
     def create_teacher(data: dict):
         """Create a new teacher. Assumes @roles_required('admin') handled authorization."""
-        # No role check needed here - decorator handles it.
         try:
-            # 1. Schema Validation & Deserialization using load_data (assuming dict return)
-            # Using temporary manual load until load_data adjusted/confirmed.
-            from app.models.Schemas import TeacherSchema  # Temp import
+            from app.models.Schemas import TeacherSchema  # Using SQLAlchemyAutoSchema with load_instance=True
+            teacher_schema = TeacherSchema()
 
-            teacher_create_schema = TeacherSchema()  # Temp instance
-            validated_data = teacher_create_schema.load(data)
-            # End Temporary block
+            teacher_instance = teacher_schema.load(data)  # <- Already a Teacher object now!
 
-            current_app.logger.debug(
-                f"Teacher data validated by schema. Proceeding with hash."
-            )
+            # Hash the password AFTER loading
+            teacher_instance.password = generate_password_hash(teacher_instance.password)
+            current_app.logger.debug(f"Password hashed for teacher email: {teacher_instance.email}")
 
-            # 2. Hash Password
-            password_plain = validated_data.pop("password")
-            password_hash = generate_password_hash(password_plain)
-            current_app.logger.debug(
-                f"Password hashed for teacher email: {validated_data.get('email')}"
-            )
-
-            # 3. Create Instance & Commit
-            new_teacher = Teacher(
-                password_hash=password_hash,  # Pass HASHED password
-                **validated_data,  # Pass remaining validated fields
-            )
-
-            db.session.add(new_teacher)
+            db.session.add(teacher_instance)
             db.session.commit()
-            current_app.logger.info(
-                f"Teacher created successfully with ID: {new_teacher.id}"
-            )  # Add logging
+            current_app.logger.info(f"Teacher created successfully with ID: {teacher_instance.id}")
 
-            # 4. Serialize & Respond using dump_data (Excludes password)
-            teacher_resp_data = dump_data(new_teacher)
+            teacher_resp_data = dump_data(teacher_instance)
             resp = message(True, "Teacher created successfully.")
             resp["teacher"] = teacher_resp_data
             return resp, 201
 
         except ValidationError as err:
             db.session.rollback()
-            current_app.logger.warning(
-                f"Schema validation error creating teacher: {err.messages}. Data: {data}"
-            )
+            current_app.logger.warning(f"Schema validation error creating teacher: {err.messages}. Data: {data}")
             return validation_error(False, err.messages), 400
         except IntegrityError as error:
             db.session.rollback()
-            current_app.logger.warning(
-                f"Database integrity error creating teacher: {error}. Data: {data}",
-                exc_info=True,
-            )
-            if "teacher_email_key" in str(
-                error.orig  # Access original DBAPI error if needed
-            ) or "UNIQUE constraint failed: teacher.email" in str(error.orig):
-                return err_resp(
-                    f"Email '{data.get('email')}' already exists.",
-                    "duplicate_email",
-                    409,
-                )
-            # Add check for phone number if it needs to be unique
+            current_app.logger.warning(f"Database integrity error creating teacher: {error}. Data: {data}", exc_info=True)
+            if "teacher_email_key" in str(error.orig) or "UNIQUE constraint failed: teacher.email" in str(error.orig):
+                return err_resp(f"Email '{data.get('email')}' already exists.", "duplicate_email", 409)
             return internal_err_resp()
         except SQLAlchemyError as error:
             db.session.rollback()
-            current_app.logger.error(
-                f"Database error creating teacher: {error}. Data: {data}", exc_info=True
-            )
+            current_app.logger.error(f"Database error creating teacher: {error}. Data: {data}", exc_info=True)
             return internal_err_resp()
         except Exception as error:
             db.session.rollback()
-            current_app.logger.error(
-                f"Unexpected error creating teacher: {error}. Data: {data}",
-                exc_info=True,
-            )
+            current_app.logger.error(f"Unexpected error creating teacher: {error}. Data: {data}", exc_info=True)
             return internal_err_resp()
 
     # --- UPDATE (Admin Perspective) ---

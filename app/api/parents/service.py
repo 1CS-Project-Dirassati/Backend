@@ -38,7 +38,7 @@ class ParentService:
 
         # --- Record-Level Authorization Check ---
         # Can the current user view THIS specific parent's record?
-        if  current_user_id != parent.id:
+        if  current_user_role=="parent" and int(current_user_id) != parent.id:
             current_app.logger.warning(
                 f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to access parent record {parent_id}."
             )  # Add logging

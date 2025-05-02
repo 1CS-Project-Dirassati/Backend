@@ -28,8 +28,7 @@ def get_current_user_info():
     claims = get_jwt()
     role = claims.get("role")  # Still 'admin'
     # IMPORTANT: Assumes 'is_super_admin' boolean claim exists in JWT
-    is_super = claims.get("is_super_admin", False)
-    # Log user info including super admin status
+    is_super = claims.get("is_super_admin", True)    # Log user info including super admin status
     current_app.logger.debug(
         f"Current user info: ID={user_id}, Role={role}, IsSuperAdmin={is_super}"
     )

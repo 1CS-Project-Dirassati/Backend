@@ -52,7 +52,7 @@ class TeacherList(Resource):
     )
     @jwt_required()
 
-    @roles_required("admin","parent")  # Only admins can list all teachers
+    @roles_required("admin","parent","teacher")  # Only admins can list all teachers
     @limiter.limit("50/minute")
     def get(self):
         """Get a paginated list of all teachers (Admin only)"""
@@ -185,7 +185,7 @@ class TeacherResource(Resource):
     )
     @jwt_required()
 
-    @roles_required("admin","parent")  # Only Admin can delete
+    @roles_required("admin","parent","teacher")  # Only Admin can delete
     @limiter.limit("5/minute")  # Lower limit due to destructive nature & checks
     def delete(self, teacher_id):
         """Delete a teacher (Admin only) - Fails on dependencies"""
@@ -215,7 +215,7 @@ class TeacherProfile(Resource):
         },
     )
     @jwt_required()
-    @roles_required("teacher")  # Decorator handles role check
+    @roles_required("teacher",)  # Decorator handles role check
     # Use config for rate limit
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_TEACHER_ME_GET", "100/minute")

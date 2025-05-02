@@ -48,21 +48,7 @@ class Teacher(Model):
     def __repr__(self):
         return f"<Teacher id={self.id} email={self.email}>"
 
-    def __init__(
-        self,
-        email,
-        password_hash,
-        phone_number,
-        first_name=None,
-        last_name=None,
-        module_key=None,
-    ):
-        self.email = email
-        self.password = password_hash
-        self.phone_number = phone_number
-        self.first_name = first_name
-        self.last_name = last_name
-        self.module_key = module_key
+   
 
     def verify_password(self, password):
         return check_password_hash(self.password, password)
