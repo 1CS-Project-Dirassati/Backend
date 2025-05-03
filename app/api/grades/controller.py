@@ -67,6 +67,7 @@ class NoteList(Resource):
             student_id=args.get("student_id"),
             module_id=args.get("module_id"),
             teacher_id=args.get("teacher_id"),
+            group_id=args.get("group_id"),
             page=args.get('page'), # Pass pagination arg
             per_page=args.get('per_page'), # Pass pagination arg
             current_user_id=user_id,
@@ -89,7 +90,7 @@ class NoteList(Resource):
     )
     @api.expect(note_create_input, validate=True)
     @jwt_required()
-    @roles_required("admin", "teacher") # Decorator handles role check
+    @roles_required( "teacher") # Decorator handles role check
     # Use config for rate limit
     @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_NOTE_CREATE", "30/minute"))
     def post(self):

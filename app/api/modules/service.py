@@ -5,7 +5,7 @@ from marshmallow import ValidationError
 
 # Import DB instance and models
 from app import db
-from app.models import Module, Teacher
+from app.models import Module, Teacher, TeacherModuleAssociation,Level
 
 # Import shared utilities
 from app.utils import (
@@ -48,6 +48,7 @@ class ModuleService:
         name=None,
         description=None,
         teacher_id=None,
+        level_id=None,
         page=None,
         per_page=None,
         current_user_id=None,
@@ -66,7 +67,12 @@ class ModuleService:
             if description:
                 query = query.filter(Module.description.ilike(f"%{description}%"))
             if teacher_id:
-                query = query.filter(Module.teacher_id == teacher_id)
+                # Join with TeacherModuleAssociation to filter by teacher
+                query = query.join(TeacherModuleAssociation).filter(
+                    TeacherModuleAssociation.teacher_id == teacher_id
+                )
+            if level_id:
+                query = query.filter(Module.level_id == level_id)
 
             # Add ordering
             query = query.order_by(Module.name.asc())
@@ -102,17 +108,20 @@ class ModuleService:
     def create_module(data, current_user_id, current_user_role):
         """Create a new module"""
         try:
-            # Check foreign key
-            teacher = Teacher.query.get(data["teacher_id"])
-            if not teacher:
+            # Validate required fields
+            if "level_id" not in data:
+                return err_resp("level_id is required", "missing_level_id", 400)
+            
+            level = Level.query.get(data["level_id"])
+            if not level:
                 return err_resp(
-                    f"Teacher with ID {data['teacher_id']} not found.",
-                    "teacher_404",
-                    404,
+                    "Specified level does not exist",
+                    "level_not_found",
+                    404
                 )
 
             # Create instance
-            new_module = load_data (data)
+            new_module = load_data(data)
 
             db.session.add(new_module)
             db.session.commit()
@@ -158,6 +167,8 @@ class ModuleService:
                 module.name = data["name"]
             if "description" in data:
                 module.description = data["description"]
+            if "level_id" in data:
+                module.level_id = data["level_id"]
 
             db.session.commit()
 
@@ -203,4 +214,95 @@ class ModuleService:
         except Exception as error:
             db.session.rollback()
             current_app.logger.error(f"Error deleting module: {error}", exc_info=True)
+            return internal_err_resp()
+
+    # --- Assign Teacher to Module ---
+    @staticmethod
+    def assign_teacher(module_id, teacher_id):
+        """Assign a teacher to a module"""
+        try:
+            # Check if both module and teacher exist
+            module = Module.query.get(module_id)
+            teacher = Teacher.query.get(teacher_id)
+            
+            if not module:
+                return err_resp("Module not found!", "module_404", 404)
+            if not teacher:
+                return err_resp("Teacher not found!", "teacher_404", 404)
+            
+            # Check if association already exists
+            existing_association = TeacherModuleAssociation.query.filter_by(
+                module_id=module_id,
+                teacher_id=teacher_id
+            ).first()
+            
+            if existing_association:
+                return err_resp(
+                    "Teacher is already assigned to this module.",
+                    "duplicate_assignment",
+                    409
+                )
+            
+            # Create new association
+            association = TeacherModuleAssociation(
+                module_id=module_id,
+                teacher_id=teacher_id
+            )
+            
+            db.session.add(association)
+            db.session.commit()
+            
+            return message(True, "Teacher assigned to module successfully."), 201
+            
+        except SQLAlchemyError as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Database error assigning teacher to module: {error}",
+                exc_info=True
+            )
+            return internal_err_resp()
+        except Exception as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Error assigning teacher to module: {error}",
+                exc_info=True
+            )
+            return internal_err_resp()
+
+    # --- Remove Teacher from Module ---
+    @staticmethod
+    def remove_teacher(module_id, teacher_id):
+        """Remove a teacher from a module"""
+        try:
+            # Check if association exists
+            association = TeacherModuleAssociation.query.filter_by(
+                module_id=module_id,
+                teacher_id=teacher_id
+            ).first()
+            
+            if not association:
+                return err_resp(
+                    "Teacher is not assigned to this module.",
+                    "assignment_not_found",
+                    404
+                )
+            
+            db.session.delete(association)
+            db.session.commit()
+            
+            return None, 204  # No Content
+            
+        except SQLAlchemyError as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Database error removing teacher from module: {error}",
+                exc_info=True
+            )
+            return internal_err_resp()
+        except Exception as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Error removing teacher from module: {error}",
+                exc_info=True
+            )
             return internal_err_resp()

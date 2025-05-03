@@ -10,13 +10,6 @@ class TeacherDto:
 
     # --- Parser for Query Parameters (Admin list view - Filters and Pagination) ---
     teacher_filter_parser = RequestParser(bundle_errors=True)
-    teacher_filter_parser.add_argument(
-        "module_key",
-        type=str,
-        location="args",
-        required=False,
-        help="Filter teachers by their associated module key (case-insensitive partial match).",  # Updated help
-    )
     teacher_filter_parser.add_argument(  # Added page
         "page",
         type=int,
@@ -59,10 +52,7 @@ class TeacherDto:
             "profile_picture": fields.String(
                 required=False, description="URL to teacher's profile picture"
             ),  # Optional
-            "module_key": fields.String(
-                required=False,
-                description="Associated module key, if applicable (Admin managed)",
-            ),  # Optional, clarify admin managed
+            
             "created_at": fields.DateTime(
                 readonly=True, description="Timestamp of teacher record creation (UTC)"
             ),  # Added UTC
@@ -134,9 +124,7 @@ class TeacherDto:
             "profile_picture": fields.String(
                 required=False, description="URL to teacher's profile picture"
             ),  # Optional
-            "module_key": fields.String(
-                required=False, description="Associated module key, optional"
-            ),  # Optional
+            
         },
     )
 
@@ -159,9 +147,7 @@ class TeacherDto:
             "profile_picture": fields.String(
                 required=False, description="URL to teacher's profile picture"
             ),  # Optional
-            "module_key": fields.String(
-                required=False, description="Associated module key, optional"
-            ),  # Optional
+            
             # Excludes email, password
         },
     )

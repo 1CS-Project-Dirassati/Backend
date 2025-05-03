@@ -32,6 +32,13 @@ class ModuleDto:
         help="Filter modules by the ID of the teacher.",
     )
     module_filter_parser.add_argument(
+        "level_id",
+        type=int,
+        location="args",
+        required=False,
+        help="Filter modules by the ID of the level.",
+    )
+    module_filter_parser.add_argument(
         "page",
         type=int,
         location="args",
@@ -57,9 +64,9 @@ class ModuleDto:
             "description": fields.String(
                 required=False, description="Description of the module"
             ),
-            "teacher_id": fields.Integer(
+            "level_id": fields.Integer(
                 required=True,
-                description="ID of the teacher responsible for this module",
+                description="ID of the level this module belongs to",
             ),
         },
     )
@@ -68,9 +75,12 @@ class ModuleDto:
     data_resp = api.model(
         "Module Data Response",
         {
-            "status": fields.Boolean(description="Indicates success or failure"),
+            "id": fields.Integer(description="Module ID"),
+            "name": fields.String(description="Module name"),
+            "description": fields.String(description="Module description"),
+            "level_id": fields.Integer(description="ID of the level this module belongs to"),
             "message": fields.String(description="Response message"),
-            "module": fields.Nested(module, description="The module data"),
+            "status": fields.Boolean(description="Response status"),
         },
     )
 
@@ -78,19 +88,15 @@ class ModuleDto:
     list_data_resp = api.model(
         "Module List Response",
         {
-            "status": fields.Boolean(description="Indicates success or failure"),
-            "message": fields.String(description="Response message"),
-            "modules": fields.List(
-                fields.Nested(module), description="List of module data"
-            ),
-            "total": fields.Integer(
-                description="Total number of modules matching the query"
-            ),
+            "modules": fields.List(fields.Nested(data_resp)),
+            "total": fields.Integer(description="Total number of modules"),
             "pages": fields.Integer(description="Total number of pages"),
-            "current_page": fields.Integer(description="The current page number"),
+            "current_page": fields.Integer(description="Current page number"),
             "per_page": fields.Integer(description="Number of items per page"),
-            "has_next": fields.Boolean(description="True if there is a next page"),
-            "has_prev": fields.Boolean(description="True if there is a previous page"),
+            "has_next": fields.Boolean(description="Whether there is a next page"),
+            "has_prev": fields.Boolean(description="Whether there is a previous page"),
+            "message": fields.String(description="Response message"),
+            "status": fields.Boolean(description="Response status"),
         },
     )
 
@@ -98,25 +104,17 @@ class ModuleDto:
     module_create_input = api.model(
         "Module Create Input",
         {
-            "name": fields.String(required=True, description="Name of the module"),
-            "description": fields.String(
-                required=False, description="Description of the module"
-            ),
-            "teacher_id": fields.Integer(
-                required=True,
-                description="ID of the teacher responsible for this module",
-            ),
+            "name": fields.String(required=True, description="Module name"),
+            "description": fields.String(description="Module description"),
+            "level_id": fields.Integer(required=True, description="ID of the level this module belongs to"),
         },
     )
 
     module_update_input = api.model(
         "Module Update Input",
         {
-            "name": fields.String(
-                required=False, description="Updated name of the module"
-            ),
-            "description": fields.String(
-                required=False, description="Updated description of the module"
-            ),
+            "name": fields.String(description="Module name"),
+            "description": fields.String(description="Module description"),
+            "level_id": fields.Integer(description="ID of the level this module belongs to"),
         },
     )

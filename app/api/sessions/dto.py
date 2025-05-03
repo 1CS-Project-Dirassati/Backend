@@ -26,6 +26,13 @@ class SessionDto:
         required=False,
         help="Filter sessions by the ID of the teacher conducting.",
     )
+    session_filter_parser.add_argument(
+        "semester_id",
+        type=int,
+        location="args",
+        required=False,
+        help="Filter sessions by the ID of the semester .",
+    )
     session_filter_parser.add_argument( # Added page
         'page',
         type=int,

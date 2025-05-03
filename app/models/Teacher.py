@@ -19,7 +19,6 @@ class Teacher(Model):
     profile_picture = Column(
         db.String(255), default="static/images/default_profile.png"
     )
-    module_key = Column(db.String(100), nullable=True)
     created_at = Column(
         db.DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -33,11 +32,11 @@ class Teacher(Model):
     )
 
     # Relationships
-    modules = relationship("Module", back_populates="teacher")
-    assigned_groups = relationship(
-        "Teachings",
-        back_populates="teacher",
-        cascade="all, delete-orphan",
+    module_associations = relationship(
+        "TeacherModuleAssociation", back_populates="teacher", cascade="all, delete-orphan"
+    )
+    group_associations = relationship(
+        "TeacherGroupAssociation", back_populates="teacher", cascade="all, delete-orphan"
     )
     sessions = relationship("Session", back_populates="teacher")
     cours = relationship(

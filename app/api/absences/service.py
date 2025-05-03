@@ -68,18 +68,18 @@ class AbsenceService:
             can_access = True
             log_reason = "User is admin."
         elif (
-            absence.session and absence.session.teacher_id == current_user_id
+            absence.session and absence.session.teacher_id == int(current_user_id)
         ):  # Check if user is the teacher of the session
             can_access = True
             log_reason = "User is the teacher of the session."
-        elif current_user_role == "student" and absence.student_id == current_user_id:
+        elif current_user_role == "student" and absence.student_id == int(current_user_id):
             can_access = True
             log_reason = "User is the student associated with the absence."
         # Check parent access using the eager-loaded student.parent_id
         elif (
             current_user_role == "parent"
             and absence.student
-            and absence.student.parent_id == current_user_id
+            and absence.student.parent_id == int(current_user_id)
         ):
             can_access = True
             log_reason = (
@@ -146,7 +146,7 @@ class AbsenceService:
                 current_app.logger.debug(
                     f"Scoping absences list for student ID: {current_user_id}"
                 )
-                query = query.filter(Absence.student_id == current_user_id)
+                query = query.filter(Absence.student_id == int(current_user_id))
                 student_id = current_user_id  # Force student_id filter
                 session_id = None  # Ignore session filter from student
             elif current_user_role == "parent":
@@ -201,7 +201,7 @@ class AbsenceService:
                     f"Scoping absences list for teacher ID: {current_user_id}"
                 )
                 query = query.join(Absence.session).filter(
-                    Session.teacher_id == current_user_id
+                    Session.teacher_id == int(current_user_id)
                 )
             # Admins see all
 
@@ -313,27 +313,37 @@ class AbsenceService:
             current_app.logger.debug("Absence data validated by schema.")
 
             # 2. Foreign Key Validation & Fetch Session
-            fk_errors = AbsenceService._validate_foreign_keys(validated_data)
+            fk_errors = AbsenceService._validate_foreign_keys(data)
             if fk_errors:
                 current_app.logger.warning(
                     f"Foreign key validation failed creating absence: {fk_errors}. Data: {data}"
                 )
                 return validation_error(False, fk_errors), 400
 
-            session = Session.query.get(validated_data["session_id"])
-            # session should exist due to FK check, but double-check
+            # Fetch the session and student
+            session = Session.query.get(data["session_id"])
+            student = Student.query.get(data["student_id"])
 
-            # 3. Authorization Check
+            # 3. Validate Student Group
+            if not student:
+                return err_resp("Student not found.", "student_404", 404)
+            
             if not session:
+                return err_resp("Session not found.", "session_404", 404)
+
+            # Check if student belongs to the session's group
+            if student.group_id != session.group_id:
                 current_app.logger.warning(
-                    f"Session with ID {validated_data['session_id']} not found."
+                    f"Student {student.id} does not belong to group {session.group_id} of session {session.id}"
                 )
                 return err_resp(
-                    "Session not found.",
-                    "session_404",
-                    404,
+                    "Student does not belong to the group of this session.",
+                    "student_group_mismatch",
+                    403,
                 )
-            if current_user_role == "teacher" and session.teacher_id != current_user_id:
+
+            # 4. Authorization Check
+            if current_user_role == "teacher" and session.teacher_id != int(current_user_id):
                 current_app.logger.warning(
                     f"Forbidden: Teacher {current_user_id} attempted to record absence for session {session.id} taught by teacher {session.teacher_id}."
                 )
@@ -344,24 +354,28 @@ class AbsenceService:
                 )
             # Admins are allowed
 
-            # 4. Validate Reason if Justified
-            if validated_data.get("justified") and not validated_data.get("reason"):
+            # 5. Validate Reason if Justified
+            if data.get("justified") and not data.get("reason"):
                 return err_resp(
                     "Reason is required if absence is justified.",
                     "justification_reason_missing",
                     400,
                 )
 
-            # 5. Create Instance & Commit
-
-            new_absence = load_data(validated_data)
+            # 6. Create Instance & Commit
+            new_absence = Absence(
+                student_id=data["student_id"],
+                session_id=data["session_id"],
+                justified=data.get("justified", False),
+                reason=data.get("reason")
+            )
             db.session.add(new_absence)
             db.session.commit()
             current_app.logger.info(
                 f"Absence record created successfully with ID: {new_absence.id} by User ID: {current_user_id}"
             )
 
-            # 6. Serialize & Respond using dump_data
+            # 7. Serialize & Respond using dump_data
             absence_resp_data = dump_data(new_absence)
             resp = message(True, "Absence recorded successfully.")
             resp["absence"] = absence_resp_data
@@ -422,7 +436,7 @@ class AbsenceService:
 
         # --- Record-Level Authorization Check ---
         can_update = (current_user_role == "admin") or (
-            absence.session and absence.session.teacher_id == current_user_id
+            absence.session and absence.session.teacher_id == int(current_user_id)
         )
 
         if not can_update:
@@ -449,15 +463,10 @@ class AbsenceService:
             )
 
         try:
-            # 1. Schema Validation & Deserialization using load_data (partial, only justified/reason)
-            # Using temporary manual load until load_data adjusted/confirmed.
+            # 1. Schema Validation & Deserialization
             from app.models.Schemas import AbsenceSchema  # Temp import
-
-            absence_update_schema = AbsenceSchema(
-                partial=True, only=("justified", "reason")
-            )  # Temp instance
+            absence_update_schema = AbsenceSchema(partial=True, only=("justified", "reason"))
             validated_data = absence_update_schema.load(data)
-            # End Temporary block
 
             current_app.logger.debug(
                 f"Absence data validated by schema for update ID: {absence_id}"
@@ -465,30 +474,15 @@ class AbsenceService:
 
             # 2. Update fields if provided
             updated = False
-            if "justified" in validated_data:
-                absence.justified = validated_data["justified"]
-                # If setting justified=True, reason should ideally be present (though not strictly enforced on update here)
-                if (
-                    absence.justified
-                    and "reason" not in validated_data
-                    and not absence.reason
-                ):
-                    current_app.logger.info(
-                        f"Absence {absence_id} set to justified but no reason provided/updated."
-                    )
-                # If setting justified=False, optionally clear the reason
-                # if not absence.justified:
-                #     absence.reason = None
+            if "justified" in data:
+                absence.justified = data["justified"]
                 updated = True
 
-            if "reason" in validated_data:
-                absence.reason = validated_data[
-                    "reason"
-                ]  # Allows setting to null or empty string
+            if "reason" in data:
+                absence.reason = data["reason"]
                 updated = True
 
             if not updated:
-                # If neither field was in the input after validation
                 return err_resp(
                     "No valid fields provided for update.", "no_update_fields", 400
                 )
@@ -502,7 +496,7 @@ class AbsenceService:
                 )
 
             # 4. Commit Changes
-            db.session.add(absence)  # Add modified object to session
+            db.session.add(absence)
             db.session.commit()
             current_app.logger.info(
                 f"Absence record updated successfully for ID: {absence_id} by User ID: {current_user_id}"
@@ -553,7 +547,7 @@ class AbsenceService:
 
         # --- Record-Level Authorization Check ---
         can_delete = (current_user_role == "admin") or (
-            absence.session and absence.session.teacher_id == current_user_id
+            absence.session and absence.session.teacher_id == int(current_user_id)
         )
 
         if not can_delete:

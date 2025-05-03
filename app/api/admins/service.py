@@ -434,7 +434,7 @@ class AdminService:
                 403,
             )
 
-        if admin_id_to_delete == current_user_id:
+        if admin_id_to_delete == int(current_user_id):
             current_app.logger.warning(
                 f"Forbidden: Admin {current_user_id} attempted to delete own account."
             )  # Add logging

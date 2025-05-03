@@ -60,14 +60,14 @@ class NoteService:
         if current_user_role == "admin":
             can_access = True
             log_reason = "User is admin."
-        elif current_user_role == "teacher" and note.teacher_id == current_user_id:
+        elif current_user_role == "teacher" and note.teacher_id == int(current_user_id):
             can_access = True
             log_reason = "User is the teacher who created the note."
-        elif current_user_role == "student" and note.student_id == current_user_id:
+        elif current_user_role == "student" and note.student_id == int(current_user_id):
             can_access = True
             log_reason = "User is the student associated with the note."
         # Check parent access using the eager-loaded student.parent_id
-        elif current_user_role == "parent" and note.student and note.student.parent_id == current_user_id:
+        elif current_user_role == "parent" and note.student and note.student.parent_id == int(current_user_id):
             can_access = True
             log_reason = "User is the parent of the student associated with the note."
 
@@ -101,6 +101,7 @@ class NoteService:
         student_id=None,
         module_id=None,
         teacher_id=None,
+        group_id=None,
         page=None,
         per_page=None,
         current_user_id=None,
@@ -108,7 +109,7 @@ class NoteService:
     ):
         """Get a paginated list of notes, filtered, with role-based data scoping"""
         page = page or 1
-        per_page = per_page or 10 # Or get from config
+        per_page = per_page or 10
 
         try:
             # Eager load student and parent for efficient parent filtering
@@ -123,10 +124,10 @@ class NoteService:
             # --- Role-Based Data Scoping (Applied first) ---
             if current_user_role == "student":
                 current_app.logger.debug(f"Scoping notes list for student ID: {current_user_id}")
-                query = query.filter(Note.student_id == current_user_id) #type:ignore[reportGeneralTypeIssues]
+                query = query.filter(Note.student_id == int(current_user_id)) #type:ignore[reportGeneralTypeIssues]
                 student_id = current_user_id # Force student_id filter
                 # Ignore other potentially passed filters
-                module_id = teacher_id = None
+                module_id = teacher_id = group_id = None
             elif current_user_role == "parent":
                 # Find the parent's children IDs using the user_id (which IS the parent.id)
                 parent = Parent.query.options(joinedload(Parent.students)).get(current_user_id) #type:ignore[reportGeneralTypeIssues]
@@ -157,7 +158,7 @@ class NoteService:
             elif current_user_role == "teacher":
                 # Simple approach: Only show notes they created
                 current_app.logger.debug(f"Scoping notes list for teacher ID: {current_user_id}")
-                query = query.filter(Note.teacher_id == current_user_id) #type:ignore[reportGeneralTypeIssues]
+                query = query.filter(Note.teacher_id == int(current_user_id)) #type:ignore[reportGeneralTypeIssues]
                 teacher_id = current_user_id # Force teacher_id filter
                 # Allow filtering by student/module within their own notes
             # Admins see all - apply standard filters below
@@ -175,6 +176,13 @@ class NoteService:
             if teacher_id is not None and current_user_role == "admin":
                 filters_applied['teacher_id'] = teacher_id
                 query = query.filter(Note.teacher_id == teacher_id) #type:ignore[reportGeneralTypeIssues]
+            # --- Group filter ---
+            if group_id is not None:
+                print('kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk')
+                print(group_id)
+                filters_applied['group_id'] = group_id
+                # Join with Student to filter by group_id
+                query = query.join(Note.student).filter(Student.group_id == group_id)
 
             if filters_applied:
                  current_app.logger.debug(f"Applying note list filters: {filters_applied}")
@@ -218,18 +226,16 @@ class NoteService:
         # Decorator already checked for admin/teacher role.
 
         try:
-            # 1. Schema Validation & Deserialization using load_data (assuming dict return)
-            # Using temporary manual load until load_data adjusted/confirmed.
+            # 1. Schema Validation & Deserialization
             from app.models.Schemas import NoteSchema # Temp import
-            # Exclude teacher_id as it's derived
-            note_create_schema = NoteSchema(exclude=("teacher_id",)) # Temp instance
-            validated_data = note_create_schema.load(data)
+            note_create_schema = NoteSchema() # Temp instance
+            # validated_data = note_create_schema.load(data)
             # End Temporary block
 
             current_app.logger.debug(f"Note data validated by schema. Proceeding with FK checks.")
 
             # 2. Foreign Key Validation
-            fk_errors = NoteService._validate_foreign_keys(validated_data)
+            fk_errors = NoteService._validate_foreign_keys(data)
             if fk_errors:
                 current_app.logger.warning(f"Foreign key validation failed creating note: {fk_errors}. Data: {data}")
                 return validation_error(False, fk_errors), 400
@@ -257,8 +263,8 @@ class NoteService:
                  return internal_err_resp()
 
             # 4. Validate Grade Value (e.g., 0-20)
-            grade_value = validated_data["value"]
-            MIN_GRADE, MAX_GRADE = 0, 20 # Define boundaries
+            grade_value = data["value"]
+            MIN_GRADE, MAX_GRADE = 0, 20
             if not (MIN_GRADE <= grade_value <= MAX_GRADE):
                 current_app.logger.warning(f"Invalid grade value received: {grade_value}. Data: {data}")
                 return err_resp(
@@ -269,13 +275,16 @@ class NoteService:
 
             # 5. Create Instance & Commit
             new_note = Note(
-                teacher_id=teacher_id_to_assign, # Use determined teacher ID
-                **validated_data # Pass remaining validated fields (student_id, module_id, value, comment)
+                student_id=data["student_id"],
+                module_id=data["module_id"],
+                teacher_id=teacher_id_to_assign,
+                value=data["value"],
+                comment=data.get("comment")
             )
 
             db.session.add(new_note)
             db.session.commit()
-            current_app.logger.info(f"Note created successfully with ID: {new_note.id} by Teacher/Admin ID: {teacher_id_to_assign}") # Add logging
+            current_app.logger.info(f"Note created successfully with ID: {new_note.id} by Teacher/Admin ID: {teacher_id_to_assign}")
 
             # 6. Serialize & Respond using dump_data
             note_resp_data = dump_data(new_note)
@@ -294,9 +303,6 @@ class NoteService:
             current_app.logger.warning(
                 f"Database integrity error creating note: {error}. Data: {data}", exc_info=True
             )
-            # Check for specific unique constraint if one exists (e.g., student+module unique)
-            # if "uq_student_module_note" in str(error.orig):
-            #     return err_resp("A grade already exists for this student in this module.", "duplicate_note", 409)
             return internal_err_resp()
         except SQLAlchemyError as error:
             db.session.rollback()
@@ -322,7 +328,7 @@ class NoteService:
         # --- Record-Level Authorization Check ---
         # Only admin or the teacher who created the note can update
         can_update = (current_user_role == "admin") or \
-                     (current_user_role == "teacher" and note.teacher_id == current_user_id)
+                     (current_user_role == "teacher" and note.teacher_id == int(current_user_id))
 
         if not can_update:
             current_app.logger.warning(f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to update note {note_id} created by teacher {note.teacher_id}.") # Add logging
@@ -341,14 +347,14 @@ class NoteService:
             # Using temporary manual load until load_data adjusted/confirmed.
             from app.models.Schemas import NoteSchema # Temp import
             note_update_schema = NoteSchema(partial=True, only=("value", "comment")) # Temp instance
-            validated_data = note_update_schema.load(data)
+            # validated_data = note_update_schema.load(data)
             # End Temporary block
 
             current_app.logger.debug(f"Note data validated by schema for update. Proceeding with value checks for ID: {note_id}") # Add logging
 
             # 2. Validate Grade Value (if provided)
-            if "value" in validated_data:
-                grade_value = validated_data["value"]
+            if "value" in data:
+                grade_value = data["value"]
                 MIN_GRADE, MAX_GRADE = 0, 20 # Define boundaries
                 if not (MIN_GRADE <= grade_value <= MAX_GRADE):
                     current_app.logger.warning(f"Invalid grade value during update: {grade_value}. Data: {data}")
@@ -360,8 +366,8 @@ class NoteService:
                 note.value = grade_value # Update value
 
             # 3. Update comment if provided
-            if "comment" in validated_data:
-                note.comment = validated_data["comment"] # Allows setting to null or empty string
+            if "comment" in data:
+                note.comment = data["comment"] # Allows setting to null or empty string
 
             # 4. Commit Changes
             db.session.add(note) # Add modified object to session
@@ -406,7 +412,7 @@ class NoteService:
         # --- Record-Level Authorization Check ---
         # Only admin or the teacher who created the note can delete
         can_delete = (current_user_role == "admin") or \
-                     (current_user_role == "teacher" and note.teacher_id == current_user_id)
+                     (current_user_role == "teacher" and note.teacher_id == int(current_user_id))
 
         if not can_delete:
             current_app.logger.warning(f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to delete note {note_id} created by teacher {note.teacher_id}.") # Add logging

@@ -8,7 +8,7 @@ from werkzeug.security import generate_password_hash
 from app import db
 
 # Import related models needed for dependency checks
-from app.models import Teacher, Session, Module
+from app.models import Teacher, Session, Module, TeacherModuleAssociation
 
 # Import shared utilities
 from app.utils import (
@@ -74,7 +74,7 @@ class TeacherService:
     @staticmethod
     # Add type hints
     def get_all_teachers(
-        module_key=None,
+        module_id=None,
         page=None,
         per_page=None,
         current_user_role=None,  # Kept for explicit check
@@ -90,11 +90,13 @@ class TeacherService:
             filters_applied = {}
 
             # Apply filters
-            if module_key is not None:
-                filters_applied["module_key"] = module_key
-                query = query.filter(Teacher.module_key == module_key)
-                # Use ilike for case-insensitive partial match
-            
+            if module_id is not None:
+                filters_applied["module_id"] = module_id
+                # Join with TeacherModuleAssociation to filter by module
+                query = query.join(TeacherModuleAssociation).filter(
+                    TeacherModuleAssociation.module_id == module_id
+                )
+
             if filters_applied:
                 current_app.logger.debug(
                     f"Applying teacher list filters: {filters_applied}"
@@ -199,62 +201,58 @@ class TeacherService:
             )  # Add logging
             return err_resp("Teacher not found!", "teacher_404", 404)
 
-        if not data:
-            current_app.logger.warning(
-                f"Attempted admin update for teacher {teacher_id} with empty data."
-            )  # Add logging
-            return err_resp(
-                "Request body cannot be empty for update.", "empty_update_data", 400
-            )
-
         try:
-            # Use load_data with partial=True and instance=teacher
-            # Ensure TeacherSchema excludes email, password for partial admin updates
-            updated_teacher = load_data(data, partial=True, instance=teacher)
-            current_app.logger.debug(
-                f"Teacher data validated by schema for admin update. Committing changes for ID: {teacher_id}"
-            )  # Add logging
+            # Update fields
+            if "first_name" in data:
+                teacher.first_name = data["first_name"]
+            if "last_name" in data:
+                teacher.last_name = data["last_name"]
+            if "email" in data:
+                teacher.email = data["email"]
+            if "phone_number" in data:
+                teacher.phone_number = data["phone_number"]
+            if "address" in data:
+                teacher.address = data["address"]
+            if "profile_picture" in data:
+                teacher.profile_picture = data["profile_picture"]
+            if "module_key" in data:
+                teacher.module_key = data["module_key"]
 
             db.session.commit()
-            current_app.logger.info(
-                f"Teacher updated successfully by admin for ID: {teacher_id}"
-            )  # Add logging
+            current_app.logger.info(f"Teacher {teacher_id} updated successfully by admin")
 
-            # Serialize & Respond using dump_data
-            teacher_resp_data = dump_data(updated_teacher)
-            resp = message(True, "Teacher updated successfully by admin.")
-            resp["teacher"] = teacher_resp_data
+            teacher_data = dump_data(teacher)
+            resp = message(True, "Teacher updated successfully.")
+            resp["teacher"] = teacher_data
             return resp, 200
 
         except ValidationError as err:
             db.session.rollback()
             current_app.logger.warning(
-                f"Schema validation error during admin update for teacher {teacher_id}: {err.messages}. Data: {data}"
+                f"Validation error updating teacher: {err.messages}"
             )
             return validation_error(False, err.messages), 400
-        except (
-            IntegrityError
-        ) as error:  # Catch potential unique constraint violations (e.g., phone if unique)
+        except IntegrityError as error:
             db.session.rollback()
             current_app.logger.warning(
-                f"Database integrity error during admin update for teacher {teacher_id}: {error}. Data: {data}",
-                exc_info=True,
+                f"Integrity error updating teacher: {error}", exc_info=True
             )
-            # Add specific checks if needed
-            return internal_err_resp()  # Or a specific 409
+            if "teacher_email_key" in str(error.orig):
+                return err_resp(
+                    f"Email '{data.get('email')}' already exists.",
+                    "duplicate_email",
+                    409,
+                )
+            return internal_err_resp()
         except SQLAlchemyError as error:
             db.session.rollback()
             current_app.logger.error(
-                f"Database error during admin update for teacher {teacher_id}: {error}. Data: {data}",
-                exc_info=True,
+                f"Database error updating teacher: {error}", exc_info=True
             )
             return internal_err_resp()
         except Exception as error:
             db.session.rollback()
-            current_app.logger.error(
-                f"Unexpected error during admin update for teacher {teacher_id}: {error}. Data: {data}",
-                exc_info=True,
-            )
+            current_app.logger.error(f"Error updating teacher: {error}", exc_info=True)
             return internal_err_resp()
 
     # --- UPDATE (Teacher updating own profile) ---
@@ -399,5 +397,96 @@ class TeacherService:
             current_app.logger.error(
                 f"Unexpected error during admin delete for teacher {teacher_id}: {error}",
                 exc_info=True,
+            )
+            return internal_err_resp()
+
+    # --- Assign Module to Teacher ---
+    @staticmethod
+    def assign_module(teacher_id: int, module_id: int):
+        """Assign a module to a teacher"""
+        try:
+            # Check if both teacher and module exist
+            teacher = Teacher.query.get(teacher_id)
+            module = Module.query.get(module_id)
+            
+            if not teacher:
+                return err_resp("Teacher not found!", "teacher_404", 404)
+            if not module:
+                return err_resp("Module not found!", "module_404", 404)
+            
+            # Check if association already exists
+            existing_association = TeacherModuleAssociation.query.filter_by(
+                teacher_id=teacher_id,
+                module_id=module_id
+            ).first()
+            
+            if existing_association:
+                return err_resp(
+                    "Module is already assigned to this teacher.",
+                    "duplicate_assignment",
+                    409
+                )
+            
+            # Create new association
+            association = TeacherModuleAssociation(
+                teacher_id=teacher_id,
+                module_id=module_id
+            )
+            
+            db.session.add(association)
+            db.session.commit()
+            
+            return message(True, "Module assigned to teacher successfully."), 201
+            
+        except SQLAlchemyError as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Database error assigning module to teacher: {error}",
+                exc_info=True
+            )
+            return internal_err_resp()
+        except Exception as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Error assigning module to teacher: {error}",
+                exc_info=True
+            )
+            return internal_err_resp()
+
+    # --- Remove Module from Teacher ---
+    @staticmethod
+    def remove_module(teacher_id: int, module_id: int):
+        """Remove a module from a teacher"""
+        try:
+            # Check if association exists
+            association = TeacherModuleAssociation.query.filter_by(
+                teacher_id=teacher_id,
+                module_id=module_id
+            ).first()
+            
+            if not association:
+                return err_resp(
+                    "Module is not assigned to this teacher.",
+                    "assignment_not_found",
+                    404
+                )
+            
+            db.session.delete(association)
+            db.session.commit()
+            
+            return None, 204  # No Content
+            
+        except SQLAlchemyError as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Database error removing module from teacher: {error}",
+                exc_info=True
+            )
+            return internal_err_resp()
+        except Exception as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Error removing module from teacher: {error}",
+                exc_info=True
             )
             return internal_err_resp()

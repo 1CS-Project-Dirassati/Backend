@@ -17,9 +17,8 @@ from app.models import (
     Student,
     Session,
     Teacher,
-    Teachings,
-    TeachingUnit,
-
+    TeacherModuleAssociation,
+    TeacherGroupAssociation,
 )
 
 
@@ -33,6 +32,7 @@ class AbsenceSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Absence
         load_instance = True
+        include_fk=True
 
 
 class ChatSchema(ma.SQLAlchemyAutoSchema):
@@ -70,12 +70,15 @@ class ModuleSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Module
         load_instance = True
+        include_fk=True
 
 
 class NoteSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Note
         load_instance = True
+        include_fk=True
+        
 
 
 class NotificationSchema(ma.SQLAlchemyAutoSchema):
@@ -101,6 +104,7 @@ class SemesterSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Semester
         load_instance = True
+        include_fk = True
 
 
 class StudentSchema(ma.SQLAlchemyAutoSchema):
@@ -118,16 +122,20 @@ class TeacherSchema(ma.SQLAlchemyAutoSchema):
         load_only = ["password"]
 
 
-class TeachingsSchema(ma.SQLAlchemyAutoSchema):
+class TeacherModuleAssociationSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        model = Teachings
+        model = TeacherModuleAssociation
         load_instance = True
 
 
-class TeachingUnitSchema(ma.SQLAlchemyAutoSchema):
+class TeacherGroupAssociationSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        model = TeachingUnit
+        model = TeacherGroupAssociation
         load_instance = True
+
+
+
+
 class SessionSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Session

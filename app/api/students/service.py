@@ -50,15 +50,15 @@ class StudentService:
         if not student:
              return False
         # Admins and Teachers can access any record after passing the decorator
-        if current_user_role in ["admin", "teacher","parent"]:
+        if current_user_role in ["admin", "teacher"]:
             current_app.logger.debug(f"Record access granted: User {current_user_id} (Role: {current_user_role}) accessing student {student.id}.")
             return True
         # Students can access their own record
-        if current_user_role == "student" and student.id == current_user_id:
+        if current_user_role == "student" and student.id == int(current_user_id):
             current_app.logger.debug(f"Record access granted: Student {current_user_id} accessing own profile.")
             return True
         # Parents can access their own child's record (assuming JWT user_id IS parent.id)
-        if current_user_role == "parent" and student.parent_id == current_user_id:
+        if current_user_role == "parent" and student.parent_id == int(current_user_id):
             current_app.logger.debug(f"Record access granted: Parent {current_user_id} accessing child student {student.id}.")
             return True
 
@@ -120,10 +120,10 @@ class StudentService:
             # Decorator ensures role is allowed, here we filter *which* records they see
             if current_user_role == "parent":
                 current_app.logger.debug(f"Scoping student list for parent ID: {current_user_id}")
-                query = query.filter(Student.parent_id == current_user_id) # type:ignore[reportGeneralTypeIssues]
+                query = query.filter(Student.parent_id == int(current_user_id)) # type:ignore[reportGeneralTypeIssues]
             elif current_user_role == "student":
                 current_app.logger.debug(f"Scoping student list for student ID: {current_user_id}")
-                query = query.filter(Student.id == current_user_id)
+                query = query.filter(Student.id == int(current_user_id))
             # Admins/Teachers see all applicable records based on other filters
 
             # --- Apply Standard Filters ---
@@ -135,9 +135,13 @@ class StudentService:
                 filters_applied['group_id'] = group_id
                 query = query.filter(Student.group_id == group_id)
             # Only apply parent_id filter if user is admin/teacher (parent scope already applied)
-            if parent_id is not None and current_user_role in ["admin", "teacher"]:
-                filters_applied['parent_id'] = parent_id
-                query = query.filter(Student.parent_id == parent_id) # type:ignore[reportGeneralTypeIssues]
+            if parent_id is not None :
+                if  (current_user_role in ["admin", "teacher"] or (current_user_role=="parent" and int(current_user_id)==parent_id)):
+                    filters_applied['parent_id'] = parent_id
+                    query = query.filter(Student.parent_id == parent_id) # type:ignore[reportGeneralTypeIssues]
+                else:
+                    raise ValueError("Unauthorized: Cannot filter by parent_id")
+
             if is_approved is not None:
                 filters_applied['is_approved'] = is_approved
                 query = query.filter(Student.is_approved == is_approved)

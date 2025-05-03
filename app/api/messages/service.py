@@ -402,7 +402,7 @@ class MessageService:
 
         # --- Record-Level Authorization Check ---
         can_delete = (current_user_role == "admin") or (
-            message_obj.sender_id == current_user_id
+            message_obj.sender_id == int(current_user_id)
             and message_obj.sender_role == current_user_role
         )
 

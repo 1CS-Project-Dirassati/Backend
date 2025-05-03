@@ -47,6 +47,13 @@ class NoteDto:
         default=10,  # Consider a higher default?
         help="Number of items per page (default: 10).",
     )
+    note_filter_parser.add_argument(
+        "group_id",
+        type=int,
+        location="args",
+        required=False,
+        help="Filter notes by the group ID of the student.",
+    )
     # Consider adding semester/period filters if applicable
 
     # Define the core 'note' object model

@@ -15,7 +15,7 @@ class Group(Model):
     level = relationship("Level", back_populates="groups")
     students = relationship("Student", back_populates="group")
     teacher_associations = relationship(
-        "Teachings", back_populates="group", cascade="all, delete-orphan"
+        "TeacherGroupAssociation", back_populates="group", cascade="all, delete-orphan"
     )
     sessions = relationship("Session", back_populates="group")
 

@@ -48,6 +48,7 @@ class SessionList(Resource):
         args = session_filter_parser.parse_args()
         group_id_filter = args.get("group_id")
         teacher_id_filter = args.get("teacher_id")
+        semester_id_filter=args.get("semester_id")
         page = args.get("page")
         per_page = args.get("per_page")
         current_app.logger.debug(
@@ -57,6 +58,7 @@ class SessionList(Resource):
         return SessionService.get_all_sessions(
             group_id=group_id_filter,
             teacher_id=teacher_id_filter,
+            semester_id=semester_id_filter,
             page=page,  # Pass pagination args
             per_page=per_page,  # Pass pagination args
         )

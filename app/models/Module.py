@@ -10,15 +10,13 @@ class Module(Model):
     id = Column(db.Integer, primary_key=True)
     name = Column(db.String(50), nullable=False)
     description = Column(db.String(255), nullable=True)
-    teacher_id = Column(
-        db.Integer, db.ForeignKey("teacher.id"), nullable=False, index=True
-    )
+    level_id = Column(db.Integer, db.ForeignKey("level.id"), nullable=False, index=True)
 
     # Relationships
-    teacher = relationship("Teacher", back_populates="modules")
-    level_associations = relationship(
-        "TeachingUnit", back_populates="module", cascade="all, delete-orphan"
+    teacher_associations = relationship(
+        "TeacherModuleAssociation", back_populates="module", cascade="all, delete-orphan"
     )
+    level = relationship("Level", back_populates="modules")
     sessions = relationship("Session", back_populates="module")
     cours = relationship("Cours", back_populates="module", cascade="all, delete-orphan")
     notes = relationship("Note", back_populates="module", cascade="all, delete-orphan")

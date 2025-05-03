@@ -38,7 +38,7 @@ class ModuleList(Resource):
         "List modules",
         security="Bearer",
         parser=module_filter_parser,
-        description="Get a list of modules. Filterable by name, description, and teacher_id.",
+        description="Get a list of modules. Filterable by name, description, teacher_id, and level_id.",
         responses={
             200: ("Success", list_data_resp),
             401: "Unauthorized",
@@ -61,6 +61,9 @@ class ModuleList(Resource):
             name=args.get("name"),
             description=args.get("description"),
             teacher_id=args.get("teacher_id"),
+            level_id=args.get("level_id"),
+            page=args.get("page"),
+            per_page=args.get("per_page"),
             current_user_id=user_id,
             current_user_role=role,
         )
@@ -137,12 +140,12 @@ class ModuleResource(Resource):
     @jwt_required()
     @roles_required("admin")  # Only admins can update
     @limiter.limit("40/minute")
-    def patch(self, module_id):
+    def put(self, module_id):
         """Update details of a module"""
         user_id, role = get_current_user_info()
         data = request.get_json()
         current_app.logger.debug(
-            f"Received PATCH request for module ID {module_id} with data: {data}"
+            f"Received PUT request for module ID {module_id} with data: {data}"
         )
         return ModuleService.update_module(module_id, data, user_id, role)
 
@@ -167,3 +170,51 @@ class ModuleResource(Resource):
         user_id, role = get_current_user_info()
         current_app.logger.debug(f"Received DELETE request for module ID: {module_id}")
         return ModuleService.delete_module(module_id, user_id, role)
+
+
+# --- Route for teacher assignment operations ---
+@api.route("/<int:module_id>/teachers/<int:teacher_id>")
+@api.param("module_id", "The unique identifier of the module")
+@api.param("teacher_id", "The unique identifier of the teacher")
+class ModuleTeacherAssignment(Resource):
+
+    @api.doc(
+        "Assign a teacher to a module",
+        security="Bearer",
+        description="Assign a teacher to a module (Admin only).",
+        responses={
+            201: "Created - Success",
+            401: "Unauthorized",
+            403: "Forbidden",
+            404: "Not Found",
+            409: "Conflict - Teacher already assigned",
+            429: "Too Many Requests",
+            500: "Internal Server Error",
+        },
+    )
+    @jwt_required()
+    @roles_required("admin")
+    @limiter.limit("30/minute")
+    def post(self, module_id, teacher_id):
+        """Assign a teacher to a module (Admin only)"""
+        return ModuleService.assign_teacher(module_id, teacher_id)
+
+    @api.doc(
+        "Remove a teacher from a module",
+        security="Bearer",
+        description="Remove a teacher from a module (Admin only).",
+        responses={
+            204: "No Content - Success",
+            401: "Unauthorized",
+            403: "Forbidden",
+            404: "Not Found",
+            429: "Too Many Requests",
+            500: "Internal Server Error",
+        },
+    )
+    @jwt_required()
+    @roles_required("admin")
+    @limiter.limit("30/minute")
+    def delete(self, module_id, teacher_id):
+        """Remove a teacher from a module (Admin only)"""
+        return ModuleService.remove_teacher(module_id, teacher_id)

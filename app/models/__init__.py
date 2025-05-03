@@ -22,8 +22,13 @@ from .Note import Note
 from .Notification import Notification
 from .Salle import Salle
 from .Semester import Semester
-from .TeachingUnit import TeachingUnit
-from .Teachings import Teachings
+from .associations import (
+    TeacherModuleAssociation,
+    TeacherGroupAssociation,
+    
+)
+
+# importing all schemas for easier access
 from .Fee import FeeStatus
 from .Notification import NotificationType
 
@@ -46,10 +51,10 @@ from .Schemas import (
     StudentSchema,
     SessionSchema,
     TeacherSchema,
-    TeachingUnitSchema,
-    TeachingsSchema,
+    TeacherModuleAssociationSchema,
+    TeacherGroupAssociationSchema,
+    
 )
-
 
 __all__ = [
     "Admin",
@@ -69,8 +74,8 @@ __all__ = [
     "Notification",
     "Salle",
     "Semester",
-    "TeachingUnit",
-    "Teachings",
+    "TeacherModuleAssociation",
+    "TeacherGroupAssociation",
     "AdminSchema",
     "AbsenceSchema",
     "ChatSchema",
@@ -87,8 +92,8 @@ __all__ = [
     "StudentSchema",
     "SessionSchema",
     "TeacherSchema",
-    "TeachingUnitSchema",
-    "TeachingsSchema",
+    "TeacherModuleAssociationSchema",
+    "TeacherGroupAssociationSchema",
     "FeeStatus",
     "NotificationType",
 ]

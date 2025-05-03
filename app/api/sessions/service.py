@@ -87,7 +87,7 @@ class SessionService:
     # --- GET List with Filters and Pagination ---
     @staticmethod
     def get_all_sessions(
-        group_id=None, teacher_id=None, page=None, per_page=None
+        group_id=None, teacher_id=None, page=None, per_page=None,semester_id=None
     ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
         """Get a list of all sessions, optionally filtered and paginated."""
         page = page or 1  # Ensure page defaults to 1 if None
@@ -110,6 +110,16 @@ class SessionService:
                 # Optional: Check if teacher exists?
                 query = query.filter(Session.teacher_id == teacher_id)
             # Add other filters (semester, date range) here if needed
+
+            
+
+
+            if semester_id is not None:
+                current_app.logger.debug(
+                    f"Filtering sessions by semester_id: {semester_id}"
+                )  # Add logging
+                # Optional: Check if teacher exists?
+                query = query.filter(Session.semester_id == semester_id)
 
             # Add ordering, e.g., by start time
             query = query.order_by(Session.start_time)

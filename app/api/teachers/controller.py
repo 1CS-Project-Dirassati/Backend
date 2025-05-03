@@ -1,5 +1,5 @@
 # Added current_app
-from flask import request, current_app
+from flask import request, current_app, Blueprint
 from flask_restx import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
@@ -21,6 +21,8 @@ teacher_self_update_input = TeacherDto.teacher_self_update_input
 # Get the filter/pagination parser
 teacher_filter_parser = TeacherDto.teacher_filter_parser
 
+teacher_bp = Blueprint("teacher", __name__)
+
 
 # --- Helper to get current user info ---
 def get_current_user_info():
@@ -41,7 +43,7 @@ class TeacherList(Resource):
         security="Bearer",
         parser=teacher_filter_parser,
         # Updated description
-        description="Get a paginated list of all teachers. Filterable by module_key. (Admin access required)",
+        description="Get a paginated list of all teachers. Filterable by . (Admin access required)",
         responses={
             200: ("Success", list_data_resp),
             401: "Unauthorized",
@@ -67,7 +69,6 @@ class TeacherList(Resource):
 
         # Pass pagination args and role
         return TeacherService.get_all_teachers(
-            module_key=args.get("module_key"),
             page=args.get("page"),
             per_page=args.get("per_page"),
             current_user_role=role,
@@ -262,3 +263,78 @@ class TeacherProfile(Resource):
         )
         # Call the specific service method for self-update
         return TeacherService.update_own_profile(user_id, data)
+
+
+@teacher_bp.route("/", methods=["GET"])
+@jwt_required()
+@roles_required("admin")
+def get_teachers():
+    """Get all teachers with optional filters (Admin only)"""
+    current_user_id = get_jwt_identity()
+    current_user_role = get_jwt()["role"]
+
+    # Get query parameters
+    module_id = request.args.get("module_id", type=int)
+    page = request.args.get("page", type=int)
+    per_page = request.args.get("per_page", type=int)
+
+    return TeacherService.get_all_teachers(
+        module_id=module_id,
+        page=page,
+        per_page=per_page,
+        current_user_role=current_user_role,
+    )
+
+
+@teacher_bp.route("/<int:teacher_id>", methods=["GET"])
+@jwt_required()
+def get_teacher(teacher_id):
+    """Get a specific teacher by ID"""
+    current_user_id = get_jwt_identity()
+    current_user_role = get_jwt()["role"]
+
+    return TeacherService.get_teacher_data(
+        teacher_id, current_user_id, current_user_role
+    )
+
+
+@teacher_bp.route("/", methods=["POST"])
+@jwt_required()
+@roles_required("admin")
+def create_teacher():
+    """Create a new teacher (Admin only)"""
+    data = request.get_json()
+    return TeacherService.create_teacher(data)
+
+
+@teacher_bp.route("/<int:teacher_id>", methods=["PUT"])
+@jwt_required()
+@roles_required("admin")
+def update_teacher(teacher_id):
+    """Update a teacher (Admin only)"""
+    data = request.get_json()
+    return TeacherService.update_teacher_by_admin(teacher_id, data)
+
+
+@teacher_bp.route("/<int:teacher_id>", methods=["DELETE"])
+@jwt_required()
+@roles_required("admin")
+def delete_teacher(teacher_id):
+    """Delete a teacher (Admin only)"""
+    return TeacherService.delete_teacher(teacher_id)
+
+
+@teacher_bp.route("/<int:teacher_id>/modules/<int:module_id>", methods=["POST"])
+@jwt_required()
+@roles_required("admin")
+def assign_module(teacher_id, module_id):
+    """Assign a module to a teacher (Admin only)"""
+    return TeacherService.assign_module(teacher_id, module_id)
+
+
+@teacher_bp.route("/<int:teacher_id>/modules/<int:module_id>", methods=["DELETE"])
+@jwt_required()
+@roles_required("admin")
+def remove_module(teacher_id, module_id):
+    """Remove a module from a teacher (Admin only)"""
+    return TeacherService.remove_module(teacher_id, module_id)

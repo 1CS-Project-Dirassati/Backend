@@ -43,10 +43,10 @@ class ChatService:
         if current_user_role == "admin":
             can_access = True
             log_reason = "User is admin."
-        elif current_user_role == "parent" and chat.parent_id == current_user_id:
+        elif current_user_role == "parent" and chat.parent_id == int(current_user_id):
             can_access = True
             log_reason = "User is the parent participant."
-        elif current_user_role == "teacher" and chat.teacher_id == current_user_id:
+        elif current_user_role == "teacher" and chat.teacher_id == int(current_user_id):
             can_access = True
             log_reason = "User is the teacher participant."
 
@@ -98,7 +98,7 @@ class ChatService:
                 current_app.logger.debug(
                     f"Scoping chats list for parent ID: {current_user_id}"
                 )
-                query = query.filter(Chat.parent_id == current_user_id)
+                query = query.filter(Chat.parent_id == int(current_user_id))
                 # Filter by teacher if provided
                 if other_participant_id is not None:
                     query = query.filter(Chat.teacher_id == other_participant_id)
@@ -106,7 +106,7 @@ class ChatService:
                 current_app.logger.debug(
                     f"Scoping chats list for teacher ID: {current_user_id}"
                 )
-                query = query.filter(Chat.teacher_id == current_user_id)
+                query = query.filter(Chat.teacher_id == int(current_user_id))
                 # Filter by parent if provided
                 if other_participant_id is not None:
                     query = query.filter(Chat.parent_id == other_participant_id)
