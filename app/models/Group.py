@@ -15,13 +15,10 @@ class Group(Model):
     level = relationship("Level", back_populates="groups")
     students = relationship("Student", back_populates="group")
     teacher_associations = relationship(
-        "Teachings", back_populates="group", cascade="all, delete-orphan"
+       "Teachings", back_populates="group", cascade="all, delete-orphan"
     )
     sessions = relationship("Session", back_populates="group")
 
-    def __init__(self, name, level_id):
-        self.name = name
-        self.level_id = level_id
 
     def __repr__(self):
         return f"<Group id={self.id} name={self.name} level_id={self.level_id}>"

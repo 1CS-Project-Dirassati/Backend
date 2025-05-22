@@ -25,10 +25,8 @@ from .Semester import Semester
 from .TeachingUnit import TeachingUnit
 from .Teachings import Teachings
 from .Fee import FeeStatus
-from .Notification import NotificationType
 
 # importing all schemas for easier access
-NotificationType = NotificationType
 from .Schemas import (
     AdminSchema,
     AbsenceSchema,
@@ -90,5 +88,4 @@ __all__ = [
     "TeachingUnitSchema",
     "TeachingsSchema",
     "FeeStatus",
-    "NotificationType",
 ]

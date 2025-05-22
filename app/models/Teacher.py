@@ -1,7 +1,7 @@
 from app import db
 from datetime import datetime, timezone
 from . import Column, Model, relationship
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash
 
 
 class Teacher(Model):
@@ -47,8 +47,6 @@ class Teacher(Model):
 
     def __repr__(self):
         return f"<Teacher id={self.id} email={self.email}>"
-
-   
 
     def verify_password(self, password):
         return check_password_hash(self.password, password)

@@ -6,10 +6,9 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
     # Change the secret key in production run.
-    USERNAME = os.environ.get("USERNAME" , "admin")
-    PASSWORD = os.environ.get("PASSWORD" , "admin")
+    USERNAME = os.environ.get("USERNAME", "admin")
+    PASSWORD = os.environ.get("PASSWORD", "admin")
     SECRET_KEY = os.environ.get("SECRET_KEY", os.urandom(24))
-
 
     # --- Stripe ---
     STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
