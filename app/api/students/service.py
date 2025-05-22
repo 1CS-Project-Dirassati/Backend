@@ -478,7 +478,7 @@ class StudentService:
             )  # Get name safely
             print(registration_link)
             context = {
-                "registration_link": registration_link,
+                "reset_link": registration_link,
                 "expiration_minutes": expiration_minutes,
                 "parent_first_name": parent_name,
                 "child_first_name": first_name,

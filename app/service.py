@@ -28,11 +28,12 @@ def send_email(to_email: str, subject: str, template_prefix: str, context: dict)
     api_key = current_app.config.get("MAILJET_API_KEY")
     print(api_key)
     secret_key = current_app.config.get("MAILJET_SECRET_KEY")
-    print (secret_key)
+    print(secret_key)
     sender_email = current_app.config.get("MAILJET_SENDER")
     print(sender_email)
     sender_name = current_app.config.get("MAILJET_SENDER_NAME")  # Use configured name
     print(sender_name)
+    print(context)
 
     # Ensure configuration is present
     if not all([api_key, secret_key, sender_email]):
