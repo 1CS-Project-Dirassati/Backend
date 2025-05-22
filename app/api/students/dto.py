@@ -3,7 +3,7 @@ from flask_restx.reqparse import RequestParser
 
 
 class StudentDto:
-    """Data Transfer Objects and Request Parsers for the Student API."""  # Updated docstring
+    """Data Transfer Objects and Request Parsers for the Student API."""
 
     # Define the namespace
     api = Namespace("students", description="Student related operations.")
@@ -29,7 +29,7 @@ class StudentDto:
         type=int,
         location="args",
         required=False,
-        help="Filter students by the ID of their parent (Admin/Teacher only).",  # Clarified help text
+        help="Filter students by the ID of their parent (Admin/Teacher only).",
     )
     student_filter_parser.add_argument(
         "is_approved",
@@ -38,7 +38,7 @@ class StudentDto:
         required=False,
         help="Filter students by their approval status (true/false).",
     )
-    student_filter_parser.add_argument(  # Added page
+    student_filter_parser.add_argument(
         "page",
         type=int,
         location="args",
@@ -46,7 +46,7 @@ class StudentDto:
         default=1,
         help="Page number for pagination (default: 1).",
     )
-    student_filter_parser.add_argument(  # Added per_page
+    student_filter_parser.add_argument(
         "per_page",
         type=int,
         location="args",
@@ -64,42 +64,38 @@ class StudentDto:
             ),
             "first_name": fields.String(
                 required=False, description="Student's first name"
-            ),  # Optional
+            ),
             "last_name": fields.String(
                 required=False, description="Student's last name"
-            ),  # Optional
+            ),
             "email": fields.String(
                 required=True, description="Student's unique email address"
             ),
             "level_id": fields.Integer(
                 required=True, description="ID of the student's current level"
-            ),  # Clarified
+            ),
             "group_id": fields.Integer(
                 required=False,
                 description="ID of the student's current group (if assigned)",
-            ),  # Clarified
+            ),
             "is_approved": fields.Boolean(
                 readonly=True,
                 description="Indicates if the student account is approved by admin",
-            ),  # Clarified
+            ),
             "parent_id": fields.Integer(
                 required=True, readonly=True, description="ID of the student's parent"
             ),
             "docs_url": fields.String(
                 required=False,
                 description="URL to student documents (e.g., registration forms)",
-            ),  # Clarified
+            ),
             "created_at": fields.DateTime(
                 readonly=True, description="Timestamp of student record creation (UTC)"
-            ),  # Added UTC
+            ),
             "updated_at": fields.DateTime(
                 readonly=True,
                 description="Timestamp of last student record update (UTC)",
-            ),  # Added UTC
-            # Consider adding parent/level/group names if needed via service layer enrichment
-            # "level_name": fields.String(attribute="level.name", readonly=True),
-            # "group_name": fields.String(attribute="group.name", readonly=True),
-            # "parent_name": fields.String(attribute="parent.user.name", readonly=True), # Example
+            ),
         },
     )
 
@@ -113,18 +109,25 @@ class StudentDto:
         },
     )
 
+    # Generic success message response (can be reused)
+    message_resp = api.model(
+        "Message Response",
+        {
+            "status": fields.Boolean(description="Indicates success or failure"),
+            "message": fields.String(description="Response message"),
+        },
+    )
+
     # Standard response for a list of students (includes pagination)
     list_data_resp = api.model(
         "Student List Response",
         {
             "status": fields.Boolean(description="Indicates success or failure"),
             "message": fields.String(description="Response message"),
-            # Updated description
             "students": fields.List(
                 fields.Nested(student),
                 description="List of student data for the current page",
             ),
-            # Pagination metadata fields
             "total": fields.Integer(
                 description="Total number of students matching the query"
             ),
@@ -136,9 +139,9 @@ class StudentDto:
         },
     )
 
-    # --- DTOs for POST/PUT ---
+    # --- DTOs for POST/PUT/PATCH ---
     student_create_input = api.model(
-        "Student Create Input",
+        "Student Create Input (Admin)",  # Clarified Admin role
         {
             "email": fields.String(
                 required=True, description="Student's unique email address"
@@ -147,7 +150,7 @@ class StudentDto:
                 required=True,
                 description="Student's password (min length 8, will be hashed)",
                 min_length=8,
-            ),  # Added min_length
+            ),
             "level_id": fields.Integer(
                 required=True, description="ID of the student's level"
             ),
@@ -156,49 +159,72 @@ class StudentDto:
             ),
             "first_name": fields.String(
                 required=False, description="Student's first name"
-            ),  # Optional
+            ),
             "last_name": fields.String(
                 required=False, description="Student's last name"
-            ),  # Optional
+            ),
             "docs_url": fields.String(
                 required=False, description="URL to student documents, optional"
-            ),  # Optional
-            # is_approved is handled by admins later via PATCH /approval
+            ),
         },
     )
+
+    # --- NEW DTO for Parent adding a child ---
+    student_add_child_input = api.model(
+        "Student Add Child Input (Parent)",
+        {
+            "first_name": fields.String(
+                required=True, description="Child's first name"
+            ),
+            "last_name": fields.String(required=True, description="Child's last name"),
+            "email": fields.String(
+                required=True, description="Child's unique email address"
+            ),
+            "docs_url": fields.String(
+                required=False, description="URL to child's documents (optional)"
+            ),
+        },
+    )
+    # -----------------------------------------
 
     # DTO for updating a student (limited fields, Admin only)
     student_update_input = api.model(
-        "Student Update Input (Admin)",  # Clarified title
+        "Student Update Input (Admin)",
         {
             "first_name": fields.String(
                 required=False, description="Student's first name"
-            ),  # Optional
+            ),
             "last_name": fields.String(
                 required=False, description="Student's last name"
-            ),  # Optional
+            ),
             "level_id": fields.Integer(
                 required=False, description="New ID for the student's level"
-            ),  # Optional
+            ),
             "group_id": fields.Integer(
                 required=False,
                 description="New ID for the student's group (can be null)",
-            ),  # Optional, explicitly allow null if needed in service
+            ),
             "docs_url": fields.String(
                 required=False, description="New URL for student documents"
-            ),  # Optional
-            # Email/Password changes should have dedicated endpoints/processes.
-            # Parent ID is not changed via this endpoint.
-            # Approval status is updated via PATCH /approval endpoint.
+            ),
         },
     )
+    student_complete_child_reg_input = api.model(
+        "Student Complete Child Registration Input",
+        {
+            "token": fields.String(required=True, description="The registration token received via email."),
+            "password": fields.String(required=True, description="The desired password for the student account (min 8 chars).", min_length=8),
+        }
+    )
+    # -----------------------------------------------
+
 
     # DTO specifically for admin updating approval status
     student_approval_input = api.model(
-        "Student Approval Input (Admin)",  # Clarified title
+        "Student Approval Input (Admin)",
         {
             "is_approved": fields.Boolean(
                 required=True, description="Set student approval status (true or false)"
-            )  # Clarified
+            )
         },
     )

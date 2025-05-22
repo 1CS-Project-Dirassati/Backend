@@ -476,15 +476,18 @@ class AuthService:
             db.session.commit()
 
             # --- Login the user immediately after verification ---
-            identity = {"id": new_user.id, "role": role}
+            identity = str(new_user.id)
+            additional_claims = {"role": role}
             access_token = create_access_token(
                 identity=identity,
+                additional_claims=additional_claims,
                 expires_delta=timedelta(
                     seconds=current_app.config["ACCESS_EXPIRES_SECONDS"]
                 ),
             )
             refresh_token = create_refresh_token(
                 identity=identity,
+                additional_claims=additional_claims,
                 expires_delta=timedelta(
                     days=current_app.config["REFRESH_EXPIRES_DAYS"]
                 ),

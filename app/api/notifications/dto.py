@@ -1,16 +1,35 @@
 from flask_restx import Namespace, fields
 from flask_restx.reqparse import RequestParser
-# Import the Enum to use its values in choices
-from app.models import NotificationType # Adjust import path if necessary
 
-# Get the Enum values for the choices parameter
-notification_type_choices = [t.value for t in NotificationType]
+# Assuming Enum is defined in models, adjust path if needed
+# from app.models import NotificationType
+
+# Placeholder if NotificationType enum isn't available yet
+# notification_type_choices = ["system", "payment", "attendance", "message", "grade", "application_submitted"]
+# Real implementation should fetch from Enum:
+try:
+    from app.models import NotificationType
+
+    notification_type_choices = [t.value for t in NotificationType]
+except ImportError:
+    print("Warning: NotificationType enum not found, using placeholder choices.")
+    notification_type_choices = [
+        "system",
+        "payment",
+        "attendance",
+        "message",
+        "grade",
+        "application_submitted",
+    ]
+
 
 class NotificationDto:
     """Data Transfer Objects and Request Parsers for the Notification API."""
 
-    # Define the namespace
-    api = Namespace("notification", description="Parent notification related operations.") # Singular resource name
+    # Updated namespace description
+    api = Namespace(
+        "notifications", description="Notification related operations for users."
+    )
 
     # --- Parser for Query Parameters (Filters and Pagination) ---
     notification_filter_parser = RequestParser(bundle_errors=True)
@@ -22,12 +41,12 @@ class NotificationDto:
         help="Filter notifications by read status (true/false).",
     )
     notification_filter_parser.add_argument(
-        "notification_type",
-        type=str, # Pass as string
+        "type",
+        type=str,
         location="args",
-        required=False,
-        choices=notification_type_choices, # Add choices for Swagger UI
-        help="Filter notifications by type.", # Simplified help
+        required=False,  # Renamed to 'type' for consistency
+        choices=notification_type_choices,  # Use choices if enum is available
+        help="Filter notifications by type.",
     )
     notification_filter_parser.add_argument(
         "page",
@@ -42,20 +61,51 @@ class NotificationDto:
         type=int,
         location="args",
         required=False,
-        default=15, # Default number of notifications per page
+        default=15,
         help="Number of items per page (default: 15).",
     )
 
-    # Define the core 'notification' object model
+    # Define the core 'notification' object model (using polymorphic fields)
     notification = api.model(
         "Notification Object",
         {
-            "id": fields.Integer(readonly=True, description="Notification unique identifier"),
-            "parent_id": fields.Integer(required=True, readonly=True, description="ID of the parent recipient"),
-            "message": fields.String(required=True, readonly=True, description="Content of the notification"),
-            "notification_type": fields.String(required=True, readonly=True, description="Type of notification", enum=notification_type_choices), # Use enum for choices
-            "is_read": fields.Boolean(required=True, description="Indicates if the notification has been read"),
-            "created_at": fields.DateTime(readonly=True, description="Timestamp when the notification was created (UTC)"),
+            "id": fields.Integer(
+                readonly=True, description="Notification unique identifier"
+            ),
+            # Replaced parent_id with polymorphic fields
+            "recipient_type": fields.String(
+                required=True,
+                readonly=True,
+                description="Role of the recipient (e.g., parent, admin)",
+            ),
+            "recipient_id": fields.Integer(
+                required=True, readonly=True, description="ID of the recipient user"
+            ),
+            "message": fields.String(
+                required=True, readonly=True, description="Content of the notification"
+            ),
+            "link": fields.String(
+                readonly=True,
+                description="Optional frontend link related to the notification",
+            ),  # Added link
+            # Renamed notification_type to type
+            "type": fields.String(
+                required=False,
+                readonly=True,
+                description="Type/category of notification",
+                enum=notification_type_choices,
+            ),
+            "is_read": fields.Boolean(
+                required=True, description="Indicates if the notification has been read"
+            ),
+            "created_at": fields.DateTime(
+                readonly=True,
+                description="Timestamp when the notification was created (UTC)",
+            ),
+            "updated_at": fields.DateTime(
+                readonly=True,
+                description="Timestamp when the notification was last updated (e.g., read) (UTC)",
+            ),  # Added updated_at
         },
     )
 
@@ -65,7 +115,9 @@ class NotificationDto:
         {
             "status": fields.Boolean(description="Indicates success or failure"),
             "message": fields.String(description="Response message"),
-            "notification": fields.Nested(notification, description="The notification data"),
+            "notification": fields.Nested(
+                notification, description="The notification data"
+            ),
         },
     )
 
@@ -75,8 +127,12 @@ class NotificationDto:
         {
             "status": fields.Boolean(description="Indicates success or failure"),
             "message": fields.String(description="Response message"),
-            "notifications": fields.List(fields.Nested(notification), description="List of notification data"),
-            "total": fields.Integer(description="Total number of notifications matching the query"),
+            "notifications": fields.List(
+                fields.Nested(notification), description="List of notification data"
+            ),
+            "total": fields.Integer(
+                description="Total number of notifications matching the query"
+            ),
             "pages": fields.Integer(description="Total number of pages"),
             "current_page": fields.Integer(description="The current page number"),
             "per_page": fields.Integer(description="Number of items per page"),
@@ -86,21 +142,50 @@ class NotificationDto:
     )
 
     # --- DTOs for POST/PATCH ---
-    # Added notification_create_input
+    # Updated create input to be polymorphic
     notification_create_input = api.model(
         "Notification Create Input (Admin)",
         {
-            "parent_id": fields.Integer(required=True, description="ID of the parent recipient"),
-            "message": fields.String(required=True, description="Content of the notification"),
-            "notification_type": fields.String(required=True, description="Type of notification", enum=notification_type_choices), # Use enum for choices
+            "recipient_type": fields.String(
+                required=True,
+                description="Role of the recipient (e.g., parent, student, teacher, admin)",
+            ),
+            "recipient_id": fields.Integer(
+                required=True, description="ID of the recipient user"
+            ),
+            "message": fields.String(
+                required=True, description="Content of the notification"
+            ),
+            "link": fields.String(
+                required=False,
+                description="Optional frontend link related to the notification",
+            ),
+            "type": fields.String(
+                required=False,
+                description="Type/category of notification",
+                enum=notification_type_choices,
+            ),
             # is_read defaults to False
-        }
+        },
     )
 
+    # Update input remains the same (only targets is_read)
     notification_update_input = api.model(
-        "Notification Update Input (Parent)", # Clarified user role
+        "Notification Update Input",
         {
-            "is_read": fields.Boolean(required=True, description="Set the read status (true or false)"),
-            # Only is_read can be updated by the parent
+            "is_read": fields.Boolean(
+                required=True, description="Set the read status (true or false)"
+            ),
+        },
+    )
+
+    # --- NEW DTO for Unread Count ---
+    unread_count_resp = api.model(
+        "Unread Count Response",
+        {
+            "status": fields.Boolean(default=True),
+            "unread_count": fields.Integer(
+                required=True, description="Number of unread notifications"
+            ),
         },
     )

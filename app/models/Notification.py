@@ -1,8 +1,20 @@
-from app import db
-from datetime import datetime, timezone
-from . import Column, Model, relationship
+from __future__ import annotations
+from sqlalchemy.orm import relationship
 from enum import Enum
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Text,
+)  # Added Text
+from sqlalchemy.sql import func
+from sqlalchemy.orm import Mapped
+from . import User
 
+from app import db  # Assuming db is your SQLAlchemy instance
 
 class NotificationType(Enum):
     SYSTEM = "system"
@@ -10,24 +22,55 @@ class NotificationType(Enum):
     ATTENDANCE = "attendance"
     MESSAGE = "message"
 
-
-class Notification(Model):
-    """System notification"""
+class Notification(db.Model):
+    """Stores individual notifications for users."""
 
     __tablename__ = "notification"
 
-    id = Column(db.Integer, primary_key=True)
-    parent_id = Column(db.Integer, db.ForeignKey("parent.id"), nullable=False)
-    message = Column(db.Text, nullable=False)
+    id = Column(Integer, primary_key=True)
+
     notification_type = Column(db.Enum(NotificationType), nullable=False)
-    is_read = Column(db.Boolean, default=False)
-    created_at = Column(
-        db.DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False,
+    # Polymorphic relationship for the recipient
+    recipient_type = Column(
+        String(50), nullable=False
+    )  # e.g., 'parent', 'admin', 'teacher', 'student'
+    recipient_id = Column(
+        Integer, ForeignKey("user.id"), nullable=False, index=True
+    )  # ID of the user in their respective table
+
+    # Consider a generic way to link back if needed, or handle querying per type
+    # recipient = relationship(...) # Complex polymorphic setup, might be overkill initially
+
+    message = Column(Text, nullable=False)  # Use Text for potentially longer messages
+    link = Column(
+        String(255), nullable=True
+    )  # Optional URL related to the notification
+    is_read = Column(Boolean, default=False, nullable=False)
+    type = Column(
+        String(50), nullable=True, index=True
+    )  # Optional category (e.g., 'grade', 'absence', 'application', 'message')
+
+    # Optional: Track who/what triggered the notification
+    # sender_type = Column(String(50), nullable=True)
+    # sender_id = Column(Integer, nullable=True)
+
+    recipient: Mapped[User] = relationship("User" , back_populates="notifications")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), onupdate=func.now()
+    )  # Track when read status changes
+
+    # Add index for faster querying by user and read status
+    __table_args__ = (
+        db.Index(
+            "ix_notification_recipient_read_created",
+            "recipient_type",
+            "recipient_id",
+            "is_read",
+            "created_at",
+        ),
     )
 
-    parent = relationship("Parent", back_populates="notifications")
-
     def __repr__(self):
-        return f"<Notification id={self.id} parent_id={self.parent_id} type={self.notification_type}>"
+        read_status = "Read" if getattr(self, "is_read", False) else "Unread"
+        return f"<Notification id={self.id} for {self.recipient_type} {self.recipient_id} - {read_status}>"

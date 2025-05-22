@@ -78,7 +78,7 @@ class NoteSchema(ma.SQLAlchemyAutoSchema):
         model = Note
         load_instance = True
         include_fk=True
-        
+
 
 
 class NotificationSchema(ma.SQLAlchemyAutoSchema):
@@ -113,6 +113,7 @@ class StudentSchema(ma.SQLAlchemyAutoSchema):
         load_instance = True
         include_fk=True
         load_only = ["password"]
+        dump_only = ["id", ]
 
 class TeacherSchema(ma.SQLAlchemyAutoSchema):
     class Meta:

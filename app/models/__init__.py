@@ -5,6 +5,7 @@ Model = db.Model
 relationship = db.relationship
 
 # Importing all models for easier access
+from .User import User
 from .Admin import Admin
 from .Absence import Absence
 from .Chat import Chat
@@ -20,20 +21,18 @@ from .Message import Message
 from .Module import Module
 from .Note import Note
 from .Notification import Notification
+from .Notification import NotificationType
 from .Salle import Salle
 from .Semester import Semester
 from .associations import (
     TeacherModuleAssociation,
     TeacherGroupAssociation,
-    
 )
 
 # importing all schemas for easier access
 from .Fee import FeeStatus
-from .Notification import NotificationType
 
 # importing all schemas for easier access
-NotificationType = NotificationType
 from .Schemas import (
     AdminSchema,
     AbsenceSchema,
@@ -53,10 +52,11 @@ from .Schemas import (
     TeacherSchema,
     TeacherModuleAssociationSchema,
     TeacherGroupAssociationSchema,
-    
 )
 
 __all__ = [
+    "User",
+    "NotificationType",
     "Admin",
     "Absence",
     "Chat",
@@ -95,5 +95,4 @@ __all__ = [
     "TeacherModuleAssociationSchema",
     "TeacherGroupAssociationSchema",
     "FeeStatus",
-    "NotificationType",
 ]
