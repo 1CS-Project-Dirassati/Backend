@@ -54,6 +54,13 @@ class NoteDto:
         required=False,
         help="Filter notes by the group ID of the student.",
     )
+    note_filter_parser.add_argument(
+        "type",
+        type=str,
+        location="args",
+        required=False,
+        help="Filter notes by type (cc, exam1, exam2).",
+    )
     # Consider adding semester/period filters if applicable
 
     # Define the core 'note' object model
@@ -75,6 +82,11 @@ class NoteDto:
             "value": fields.Float(
                 required=True,
                 description="The numerical value of the grade (e.g., 0-20)",  # Added range example
+            ),
+            "type": fields.String(
+                required=True,
+                description="Type of the grade (cc, exam1, exam2)",
+                enum=["cc", "exam1", "exam2"],
             ),
             "comment": fields.String(
                 required=False, description="Optional comment from the teacher"
@@ -138,6 +150,11 @@ class NoteDto:
                 required=True,
                 description="The numerical grade value (e.g., 0-20)",  # Added range example
             ),
+            "type": fields.String(
+                required=True,
+                description="Type of the grade (cc, exam1, exam2)",
+                enum=["cc", "exam1", "exam2"],
+            ),
             "comment": fields.String(
                 required=False, description="Optional comment about the grade"
             ),  # Optional, clarified
@@ -152,6 +169,11 @@ class NoteDto:
                 required=False,
                 description="The updated numerical grade value (e.g., 0-20)",
             ),  # Optional
+            "type": fields.String(
+                required=False,
+                description="Type of the grade (cc, exam1, exam2)",
+                enum=["cc", "exam1", "exam2"],
+            ),
             "comment": fields.String(
                 required=False,
                 description="Updated optional comment (can be empty string to clear)",

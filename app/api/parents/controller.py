@@ -52,13 +52,13 @@ class ParentList(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin")
+    @roles_required("admin","teacher")
     # Use config for rate limit
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_PARENT_LIST", "50/minute")
     )
     def get(self):
-        """Get a paginated list of all parents (Admin only)"""
+        """Get a paginated list of all parents (Admin and teacher)"""
         user_id, role = (
             get_current_user_info()
         )  # Role needed for service check (though redundant here due to decorator)
@@ -72,6 +72,7 @@ class ParentList(Resource):
         return ParentService.get_all_parents(
             is_email_verified=args.get("is_email_verified"),
             is_phone_verified=args.get("is_phone_verified"),
+            student_id=args.get("student_id"),
             page=args.get("page"),
             per_page=args.get("per_page"),
             current_user_role=role,

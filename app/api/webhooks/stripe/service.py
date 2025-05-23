@@ -2,7 +2,7 @@ from flask import current_app
 import stripe
 from datetime import datetime, timezone
 
-from app.models import Fee, FeeStatus
+from app.models import Fee, FeeStatus, Notification, NotificationType
 from app import db
 from app.utils import err_resp, message
 
@@ -39,7 +39,16 @@ class StripeWebhookService:
                     
                 # Update the fee status
                 fee.status = FeeStatus.PAID
-                fee.payment_date = datetime.now(timezone.utc)
+                fee.payment_date = datetime.now(timezone.utc).date()
+                
+                # Create a notification for the parent
+                notification = Notification(
+                    parent_id=fee.parent_id,
+                    message=f"Your payment of ${fee.amount} for {fee.description} has been received.",
+                    notification_type=NotificationType.PAYMENT
+                )
+                db.session.add(notification)
+                
                 db.session.commit()
                 
                 current_app.logger.info(f'Successfully processed payment for fee {fee_id}')

@@ -13,10 +13,10 @@ def init_stripe():
 class PaymentService:
     @staticmethod
     def create_checkout_session(fee_id, parent_id):
-        print("Creating checkout session chmisouuuuuuuuuuuuuuuuuuuuuuuu")
         """Create a Stripe checkout session for a fee payment"""
         # Initialize Stripe with current app context
         init_stripe()
+        
         # Get the fee and verify it belongs to the current parent
         fee = Fee.query.filter(
             Fee.id == fee_id,
@@ -30,6 +30,11 @@ class PaymentService:
             return err_resp("Fee is already paid", "fee_already_paid", 400)
             
         try:
+            # Get parent information for the checkout session
+            parent = Parent.query.get(parent_id)
+            if not parent:
+                return err_resp("Parent not found", "parent_404", 404)
+
             # Create a Stripe checkout session
             checkout_session = stripe.checkout.Session.create(
                 payment_method_types=['card'],
@@ -38,6 +43,7 @@ class PaymentService:
                         'currency': 'usd',
                         'product_data': {
                             'name': f'Fee Payment - {fee.description or "School Fee"}',
+                            'description': f'Payment for {parent.first_name} {parent.last_name}\'s student',
                         },
                         'unit_amount': int(fee.amount * 100),  # Convert to cents
                     },
@@ -46,6 +52,7 @@ class PaymentService:
                 mode='payment',
                 success_url=current_app.config['STRIPE_SUCCESS_URL'],
                 cancel_url=current_app.config['STRIPE_CANCEL_URL'],
+                customer_email=parent.email,
                 metadata={
                     'fee_id': str(fee.id),
                     'parent_id': str(fee.parent_id)

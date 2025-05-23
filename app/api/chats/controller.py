@@ -74,21 +74,21 @@ class ChatList(Resource):
     @api.doc(
         "Create a new chat",
         security="Bearer",
-        description="Create a new chat conversation between the current user (parent/teacher) and another specified participant (teacher/parent). Idempotent: returns existing chat if one exists.",
+        description="Create a new chat conversation between the current teacher and a specified parent. Idempotent: returns existing chat if one exists.",
         responses={
             200: ("Success (Existing Chat)", data_resp),  # Return existing if found
             201: ("Created", data_resp),
-            400: "Validation Error/Invalid Participant ID",
+            400: "Validation Error/Invalid Parent ID",
             401: "Unauthorized",
             403: "Forbidden (e.g., trying to create chat with self, invalid role)",
-            404: "Not Found (Other participant not found)",
+            404: "Not Found (Parent not found)",
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
     )
     @api.expect(chat_create_input, validate=True)
     @jwt_required()
-    @roles_required("parent", "teacher")  # Only participants can create chats
+    @roles_required("teacher")  # Only teachers can create chats
     # Use config for rate limit
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_CHAT_CREATE", "10/minute")

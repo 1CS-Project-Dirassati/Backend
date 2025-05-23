@@ -65,6 +65,14 @@ class ChatService:
 
         try:
             chat_data = dump_data(chat)
+            # Add participant information
+            if current_user_role == "teacher":
+                chat_data["teacher_id"] = int(current_user_id)
+                chat_data["parent_id"] = chat.teacher_id if current_user_role == "parent" else chat.parent_id
+            elif current_user_role == "parent":
+                chat_data["parent_id"] = int(current_user_id)
+                chat_data["teacher_id"] = chat.parent_id if current_user_role == "teacher" else chat.teacher_id
+
             resp = message(True, "Chat data sent successfully")
             resp["chat"] = chat_data
             current_app.logger.debug(f"Successfully retrieved chat ID {chat_id}")
@@ -137,6 +145,24 @@ class ChatService:
 
             # Serialize results using dump_data
             chats_data = dump_data(paginated_chats.items, many=True)
+            
+            # Add other participant's last name to each chat
+            for chat in chats_data:
+                # Get the actual chat object to access relationships
+                chat_obj = Chat.query.get(chat['id'])
+                if chat_obj:
+                    if current_user_role == "teacher":
+                        # If current user is teacher, get parent's last name
+                        chat['parent_id'] = chat_obj.parent_id
+                        chat['teacher_id'] = chat_obj.teacher_id
+                        if chat_obj.parent:
+                            chat['other_participant_name'] = chat_obj.parent.last_name
+                    else:
+                        # If current user is parent, get teacher's last name
+                        chat['parent_id'] = chat_obj.parent_id
+                        chat['teacher_id'] = chat_obj.teacher_id
+                        if chat_obj.teacher:
+                            chat['other_participant_name'] = chat_obj.teacher.last_name
 
             current_app.logger.debug(f"Serialized {len(chats_data)} chats")
             resp = message(True, "Chats list retrieved successfully")
@@ -167,74 +193,35 @@ class ChatService:
     @staticmethod
     # Add type hints
     def find_or_create_chat(data: dict, current_user_id: int, current_user_role: str):
-        """Find an existing chat or create a new one between participants."""
-        parent_id = None
-        teacher_id = None
-        other_participant_id = None
-
-        # Determine parent and teacher IDs based on current user's role
-        if current_user_role == "parent":
-            parent_id = current_user_id
-            teacher_id = data.get("teacher_id")
-            other_participant_id = teacher_id
-            if not teacher_id:
-                return err_resp(
-                    "Teacher ID is required when creating chat as a parent.",
-                    "teacher_id_missing",
-                    400,
-                )
-            if parent_id == teacher_id:  # Should not happen if IDs are distinct
-                return err_resp(
-                    "Cannot create a chat with yourself.", "chat_with_self", 400
-                )
-            # Validate teacher exists
-            if not Teacher.query.get(teacher_id):
-                return err_resp(
-                    f"Teacher with ID {teacher_id} not found.", "teacher_not_found", 404
-                )
-
-        elif current_user_role == "teacher":
-            teacher_id = current_user_id
-            parent_id = data.get("parent_id")
-            other_participant_id = parent_id
-            if not parent_id:
-                return err_resp(
-                    "Parent ID is required when creating chat as a teacher.",
-                    "parent_id_missing",
-                    400,
-                )
-            if teacher_id == parent_id:  # Should not happen
-                return err_resp(
-                    "Cannot create a chat with yourself.", "chat_with_self", 400
-                )
-            # Validate parent exists
-            if not Parent.query.get(parent_id):
-                return err_resp(
-                    f"Parent with ID {parent_id} not found.", "parent_not_found", 404
-                )
-        else:
-            # Should not happen due to @roles_required
+        """Find an existing chat or create a new one between teacher and parent."""
+        if current_user_role != "teacher":
             return err_resp(
-                "Invalid role for creating chat.", "create_role_forbidden", 403
+                "Only teachers can create chats.", "create_role_forbidden", 403
+            )
+
+        parent_id = data.get("parent_id")
+        if not parent_id:
+            return err_resp(
+                "Parent ID is required when creating chat.",
+                "parent_id_missing",
+                400,
+            )
+
+        # Validate parent exists
+        if not Parent.query.get(parent_id):
+            return err_resp(
+                f"Parent with ID {parent_id} not found.", "parent_not_found", 404
             )
 
         try:
             # Check if chat already exists between these two participants
-            existing_chat = Chat.query.filter(
-                ((Chat.parent_id == parent_id) & (Chat.teacher_id == teacher_id))
-                | (
-                    (Chat.parent_id == parent_id) & (Chat.teacher_id == teacher_id)
-                )  # Redundant check, simplified below
-            ).first()
-
-            # Simpler check assuming parent_id and teacher_id are correctly assigned
             existing_chat = Chat.query.filter_by(
-                parent_id=parent_id, teacher_id=teacher_id
+                parent_id=parent_id, teacher_id=current_user_id
             ).first()
 
             if existing_chat:
                 current_app.logger.info(
-                    f"Found existing chat ID {existing_chat.id} for parent {parent_id} and teacher {teacher_id}."
+                    f"Found existing chat ID {existing_chat.id} for parent {parent_id} and teacher {current_user_id}."
                 )
                 chat_data = dump_data(existing_chat)
                 resp = message(True, "Existing chat found.")
@@ -243,9 +230,9 @@ class ChatService:
 
             # If not existing, create a new one
             current_app.logger.info(
-                f"Creating new chat for parent {parent_id} and teacher {teacher_id}."
+                f"Creating new chat for parent {parent_id} and teacher {current_user_id}."
             )
-            new_chat = load_data(data)
+            new_chat = Chat(parent_id=parent_id, teacher_id=current_user_id)
             db.session.add(new_chat)
             db.session.commit()
             current_app.logger.info(f"Chat created successfully with ID: {new_chat.id}")

@@ -17,6 +17,7 @@ from .absences.controller import api as absences_ns
 from .salles.controller import api as salles_ns
 from .chats.controller import api as chat_ns
 from .messages.controller import api as messages_ns
+from .fees.controller import api as fees_ns
 
 
 # Import controller APIs as namespaces.
@@ -48,3 +49,4 @@ api.add_namespace(salles_ns)
 api.add_namespace(notifications_ns)
 api.add_namespace(chat_ns)
 api.add_namespace(messages_ns)
+api.add_namespace(fees_ns)

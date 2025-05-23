@@ -50,9 +50,12 @@ class ChatDto:
             "created_at": fields.DateTime(
                 readonly=True, description="Timestamp when the chat was created (UTC)"
             ),
-            # Consider adding participant names/details via service enrichment if needed
-            # "parent_name": fields.String(attribute="parent.user.name", readonly=True),
-            # "teacher_name": fields.String(attribute="teacher.user.name", readonly=True),
+            "teacher_id": fields.Integer(
+                required=True, description="ID of the current user (participant1)"
+            ),
+            "parent_id": fields.Integer(
+                required=True, description="ID of the other participant (participant2)"
+            ),
         },
     )
 
@@ -90,14 +93,9 @@ class ChatDto:
     chat_create_input = api.model(
         "Chat Create Input",
         {
-            # Depending on role, one of these will be required
             "parent_id": fields.Integer(
-                required=False,
-                description="ID of the parent participant (required if user is teacher)",
-            ),
-            "teacher_id": fields.Integer(
-                required=False,
-                description="ID of the teacher participant (required if user is parent)",
+                required=True,
+                description="ID of the parent participant",
             ),
         },
     )

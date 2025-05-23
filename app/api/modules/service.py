@@ -5,7 +5,7 @@ from marshmallow import ValidationError
 
 # Import DB instance and models
 from app import db
-from app.models import Module, Teacher, TeacherModuleAssociation,Level
+from app.models import Module, Teacher, TeacherModuleAssociation, Level, Semester
 
 # Import shared utilities
 from app.utils import (
@@ -20,6 +20,19 @@ from .utils import dump_data, load_data
 
 
 class ModuleService:
+
+    # --- Helper for Foreign Key Validation ---
+    @staticmethod
+    def _validate_foreign_keys(data: dict):
+        """Check if related entities referenced in data exist. Returns dict of errors."""
+        errors = {}
+        if data.get("level_id") is not None:
+            if not Level.query.get(data["level_id"]):
+                errors["level_id"] = f"Level with ID {data['level_id']} not found."
+        if data.get("semester_id") is not None:
+            if not Semester.query.get(data["semester_id"]):
+                errors["semester_id"] = f"Semester with ID {data['semester_id']} not found."
+        return errors
 
     # --- GET Single ---
     @staticmethod
@@ -49,6 +62,7 @@ class ModuleService:
         description=None,
         teacher_id=None,
         level_id=None,
+        semester_id=None,
         page=None,
         per_page=None,
         current_user_id=None,
@@ -73,6 +87,8 @@ class ModuleService:
                 )
             if level_id:
                 query = query.filter(Module.level_id == level_id)
+            if semester_id:
+                query = query.filter(Module.semester_id == semester_id)
 
             # Add ordering
             query = query.order_by(Module.name.asc())
@@ -111,14 +127,13 @@ class ModuleService:
             # Validate required fields
             if "level_id" not in data:
                 return err_resp("level_id is required", "missing_level_id", 400)
+            if "semester_id" not in data:
+                return err_resp("semester_id is required", "missing_semester_id", 400)
             
-            level = Level.query.get(data["level_id"])
-            if not level:
-                return err_resp(
-                    "Specified level does not exist",
-                    "level_not_found",
-                    404
-                )
+            # Validate foreign keys
+            fk_errors = ModuleService._validate_foreign_keys(data)
+            if fk_errors:
+                return validation_error(False, fk_errors), 400
 
             # Create instance
             new_module = load_data(data)
@@ -162,6 +177,11 @@ class ModuleService:
             return err_resp("Module not found!", "module_404", 404)
 
         try:
+            # Validate foreign keys if provided
+            fk_errors = ModuleService._validate_foreign_keys(data)
+            if fk_errors:
+                return validation_error(False, fk_errors), 400
+
             # Update fields
             if "name" in data:
                 module.name = data["name"]
@@ -169,6 +189,8 @@ class ModuleService:
                 module.description = data["description"]
             if "level_id" in data:
                 module.level_id = data["level_id"]
+            if "semester_id" in data:
+                module.semester_id = data["semester_id"]
 
             db.session.commit()
 

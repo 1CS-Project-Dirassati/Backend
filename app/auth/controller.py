@@ -77,7 +77,7 @@ class AuthLogout(Resource):
     # auth_logout_req = AuthDto.auth_logout
     auth_logout_resp = AuthDto.auth_success  # Generic success message
 
-    @limiter.limit("60 per hour")  # Rate limit for logout attempts
+    @limiter.limit("300 per minute")  # Rate limit for logout attempts
     @api.doc(
         "Auth logout",
         security="Bearer",  # Indicate JWT Bearer token is required
@@ -106,7 +106,7 @@ class AuthRegister(Resource):
     auth_register_req = AuthDto.auth_register
     auth_register_resp = AuthDto.auth_success  # Response includes tokens and user
 
-    @limiter.limit("3 per hour")  # Rate limit for registration attempts
+    @limiter.limit("300 per minute")  # Rate limit for registration attempts
     @api.doc(
         "Auth registration",
         responses={

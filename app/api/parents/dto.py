@@ -12,17 +12,24 @@ class ParentDto:
     parent_filter_parser = RequestParser(bundle_errors=True)
     parent_filter_parser.add_argument(
         "is_email_verified",
-        type=bool,
+        type=lambda x: x.lower() == 'true' if isinstance(x, str) else bool(x),
         location="args",
         required=False,
         help="Filter parents by email verification status (true/false).",
     )
     parent_filter_parser.add_argument(
         "is_phone_verified",
-        type=bool,
+        type=lambda x: x.lower() == 'true' if isinstance(x, str) else bool(x),
         location="args",
         required=False,
         help="Filter parents by phone verification status (true/false).",
+    )
+    parent_filter_parser.add_argument(
+        "student_id",
+        type=int,
+        location="args",
+        required=False,
+        help="Filter parents by their student's ID.",
     )
     parent_filter_parser.add_argument(  # Added page
         "page",

@@ -96,12 +96,12 @@ class NoteService:
 
     # --- GET List with Filters, Pagination & Authorization ---
     @staticmethod
-    # Add type hints
     def get_all_notes(
         student_id=None,
         module_id=None,
         teacher_id=None,
         group_id=None,
+        type=None,
         page=None,
         per_page=None,
         current_user_id=None,
@@ -124,18 +124,16 @@ class NoteService:
             # --- Role-Based Data Scoping (Applied first) ---
             if current_user_role == "student":
                 current_app.logger.debug(f"Scoping notes list for student ID: {current_user_id}")
-                query = query.filter(Note.student_id == int(current_user_id)) #type:ignore[reportGeneralTypeIssues]
+                query = query.filter(Note.student_id == int(current_user_id))
                 student_id = current_user_id # Force student_id filter
                 # Ignore other potentially passed filters
                 module_id = teacher_id = group_id = None
             elif current_user_role == "parent":
                 # Find the parent's children IDs using the user_id (which IS the parent.id)
-                parent = Parent.query.options(joinedload(Parent.students)).get(current_user_id) #type:ignore[reportGeneralTypeIssues]
+                parent = Parent.query.options(joinedload(Parent.students)).get(current_user_id)
                 if not parent:
                     current_app.logger.error(f"Parent profile not found for user ID {current_user_id} during note listing.")
-                    # Return empty list or error? Let's return empty for now.
                     return message(True, "Parent profile not found, cannot list notes.") | {"notes": [], "total": 0, "pages": 0, "current_page": 1, "per_page": per_page, "has_next": False, "has_prev": False}, 200
-                    # Alternative: return err_resp("Parent profile not found.", "parent_404", 404)
 
                 child_ids_for_parent = [student.id for student in parent.students]
                 if not child_ids_for_parent:
@@ -143,7 +141,7 @@ class NoteService:
                     return message(True, "No students found for this parent.") | {"notes": [], "total": 0, "pages": 0, "current_page": 1, "per_page": per_page, "has_next": False, "has_prev": False}, 200
 
                 current_app.logger.debug(f"Scoping notes list for parent ID: {current_user_id}, Children IDs: {child_ids_for_parent}")
-                query = query.filter(Note.student_id.in_(child_ids_for_parent)) #type:ignore[reportGeneralTypeIssues]
+                query = query.filter(Note.student_id.in_(child_ids_for_parent))
 
                 # Validate student_id filter if provided by parent
                 if student_id is not None and student_id not in child_ids_for_parent:
@@ -158,7 +156,7 @@ class NoteService:
             elif current_user_role == "teacher":
                 # Simple approach: Only show notes they created
                 current_app.logger.debug(f"Scoping notes list for teacher ID: {current_user_id}")
-                query = query.filter(Note.teacher_id == int(current_user_id)) #type:ignore[reportGeneralTypeIssues]
+                query = query.filter(Note.teacher_id == int(current_user_id))
                 teacher_id = current_user_id # Force teacher_id filter
                 # Allow filtering by student/module within their own notes
             # Admins see all - apply standard filters below
@@ -166,26 +164,33 @@ class NoteService:
             # --- Apply Standard Filters (respecting role scoping) ---
             filters_applied = {}
             if student_id is not None:
-                # Parent/Student role already filtered or validated above
                 filters_applied['student_id'] = student_id
-                query = query.filter(Note.student_id == student_id) #type:ignore[reportGeneralTypeIssues]
+                query = query.filter(Note.student_id == student_id)
             if module_id is not None:
                 filters_applied['module_id'] = module_id
-                query = query.filter(Note.module_id == module_id) #type:ignore[reportGeneralTypeIssues]
-            # Apply teacher_id filter only if user is admin AND param is provided
+                query = query.filter(Note.module_id == module_id)
             if teacher_id is not None and current_user_role == "admin":
                 filters_applied['teacher_id'] = teacher_id
-                query = query.filter(Note.teacher_id == teacher_id) #type:ignore[reportGeneralTypeIssues]
-            # --- Group filter ---
+                query = query.filter(Note.teacher_id == teacher_id)
             if group_id is not None:
-                print('kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk')
-                print(group_id)
                 filters_applied['group_id'] = group_id
-                # Join with Student to filter by group_id
                 query = query.join(Note.student).filter(Student.group_id == group_id)
+            if type is not None:
+                try:
+                    from app.models.Note import NoteType
+                    note_type = NoteType(type)
+                    filters_applied['type'] = type
+                    query = query.filter(Note.type == note_type)
+                except ValueError:
+                    current_app.logger.warning(f"Invalid note type filter: {type}")
+                    return err_resp(
+                        "Invalid note type. Must be one of: cc, exam1, exam2.",
+                        "invalid_note_type",
+                        400,
+                    )
 
             if filters_applied:
-                 current_app.logger.debug(f"Applying note list filters: {filters_applied}")
+                current_app.logger.debug(f"Applying note list filters: {filters_applied}")
 
             # Add ordering
             query = query.order_by(Note.created_at.desc())
@@ -200,7 +205,6 @@ class NoteService:
 
             current_app.logger.debug(f"Serialized {len(notes_data)} notes")
             resp = message(True, "Notes list retrieved successfully")
-            # Add pagination metadata
             resp["notes"] = notes_data
             resp["total"] = paginated_notes.total
             resp["pages"] = paginated_notes.pages
@@ -223,14 +227,11 @@ class NoteService:
     # Add type hints
     def create_note(data: dict, current_user_id: int, current_user_role: str):
         """Create a new note (grade). Assumes @roles_required handled base role."""
-        # Decorator already checked for admin/teacher role.
-
         try:
             # 1. Schema Validation & Deserialization
-            from app.models.Schemas import NoteSchema # Temp import
-            note_create_schema = NoteSchema() # Temp instance
-            # validated_data = note_create_schema.load(data)
-            # End Temporary block
+            from app.models.Schemas import NoteSchema
+            from app.models.Note import NoteType
+            note_create_schema = NoteSchema()
 
             current_app.logger.debug(f"Note data validated by schema. Proceeding with FK checks.")
 
@@ -244,23 +245,17 @@ class NoteService:
             teacher_id_to_assign = None
             if current_user_role == "teacher":
                 teacher_id_to_assign = current_user_id
-                # Optional: Add check if teacher teaches this module or student
                 current_app.logger.debug(f"Assigning teacher ID {teacher_id_to_assign} based on logged-in teacher.")
             elif current_user_role == "admin":
-                # Assumption: Admin creating a note assigns it to themselves.
-                # This requires the admin's user ID to also be a valid teacher ID.
-                # If admins can assign notes *for* other teachers, the input DTO and logic need changing.
                 teacher_id_to_assign = current_user_id
-                # Verify admin user_id exists as a teacher_id (or adjust logic)
                 if not Teacher.query.get(teacher_id_to_assign):
-                     current_app.logger.error(f"Admin user ID {current_user_id} not found in Teacher table. Cannot assign note.")
-                     # This indicates a data consistency issue or flawed assumption.
-                     return err_resp("Admin user is not registered as a teacher, cannot create note.", "admin_not_teacher", 400)
+                    current_app.logger.error(f"Admin user ID {current_user_id} not found in Teacher table. Cannot assign note.")
+                    return err_resp("Admin user is not registered as a teacher, cannot create note.", "admin_not_teacher", 400)
                 current_app.logger.debug(f"Assigning teacher ID {teacher_id_to_assign} based on logged-in admin.")
 
-            if teacher_id_to_assign is None: # Should not happen with current logic, but safety check
-                 current_app.logger.error("Failed to determine teacher ID for note creation.")
-                 return internal_err_resp()
+            if teacher_id_to_assign is None:
+                current_app.logger.error("Failed to determine teacher ID for note creation.")
+                return internal_err_resp()
 
             # 4. Validate Grade Value (e.g., 0-20)
             grade_value = data["value"]
@@ -273,12 +268,24 @@ class NoteService:
                     400,
                 )
 
-            # 5. Create Instance & Commit
+            # 5. Validate Note Type
+            try:
+                note_type = NoteType(data["type"])
+            except ValueError:
+                current_app.logger.warning(f"Invalid note type received: {data['type']}. Data: {data}")
+                return err_resp(
+                    "Invalid note type. Must be one of: cc, exam1, exam2.",
+                    "invalid_note_type",
+                    400,
+                )
+
+            # 6. Create Instance & Commit
             new_note = Note(
                 student_id=data["student_id"],
                 module_id=data["module_id"],
                 teacher_id=teacher_id_to_assign,
                 value=data["value"],
+                type=note_type,
                 comment=data.get("comment")
             )
 
@@ -286,7 +293,7 @@ class NoteService:
             db.session.commit()
             current_app.logger.info(f"Note created successfully with ID: {new_note.id} by Teacher/Admin ID: {teacher_id_to_assign}")
 
-            # 6. Serialize & Respond using dump_data
+            # 7. Serialize & Respond using dump_data
             note_resp_data = dump_data(new_note)
             resp = message(True, "Note created successfully.")
             resp["note"] = note_resp_data
@@ -322,40 +329,37 @@ class NoteService:
         """Update an existing note (value, comment). Assumes @roles_required handled base role."""
         note = Note.query.get(note_id)
         if not note:
-            current_app.logger.info(f"Attempted update for non-existent note ID: {note_id}") # Add logging
+            current_app.logger.info(f"Attempted update for non-existent note ID: {note_id}")
             return err_resp("Note not found!", "note_404", 404)
 
         # --- Record-Level Authorization Check ---
-        # Only admin or the teacher who created the note can update
         can_update = (current_user_role == "admin") or \
                      (current_user_role == "teacher" and note.teacher_id == int(current_user_id))
 
         if not can_update:
-            current_app.logger.warning(f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to update note {note_id} created by teacher {note.teacher_id}.") # Add logging
+            current_app.logger.warning(f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to update note {note_id} created by teacher {note.teacher_id}.")
             return err_resp(
                 "Forbidden: You cannot update this note.", "update_forbidden", 403
             )
 
         if not data:
-            current_app.logger.warning(f"Attempted update for note {note_id} with empty data.") # Add logging
+            current_app.logger.warning(f"Attempted update for note {note_id} with empty data.")
             return err_resp(
                 "Request body cannot be empty for update.", "empty_update_data", 400
             )
 
         try:
-            # 1. Schema Validation & Deserialization using load_data (partial, only value/comment)
-            # Using temporary manual load until load_data adjusted/confirmed.
-            from app.models.Schemas import NoteSchema # Temp import
-            note_update_schema = NoteSchema(partial=True, only=("value", "comment")) # Temp instance
-            # validated_data = note_update_schema.load(data)
-            # End Temporary block
+            # 1. Schema Validation & Deserialization
+            from app.models.Schemas import NoteSchema
+            from app.models.Note import NoteType
+            note_update_schema = NoteSchema(partial=True, only=("value", "type", "comment"))
 
-            current_app.logger.debug(f"Note data validated by schema for update. Proceeding with value checks for ID: {note_id}") # Add logging
+            current_app.logger.debug(f"Note data validated by schema for update. Proceeding with value checks for ID: {note_id}")
 
             # 2. Validate Grade Value (if provided)
             if "value" in data:
                 grade_value = data["value"]
-                MIN_GRADE, MAX_GRADE = 0, 20 # Define boundaries
+                MIN_GRADE, MAX_GRADE = 0, 20
                 if not (MIN_GRADE <= grade_value <= MAX_GRADE):
                     current_app.logger.warning(f"Invalid grade value during update: {grade_value}. Data: {data}")
                     return err_resp(
@@ -363,18 +367,31 @@ class NoteService:
                         "invalid_grade_value",
                         400,
                     )
-                note.value = grade_value # Update value
+                note.value = grade_value
 
-            # 3. Update comment if provided
+            # 3. Validate and Update Note Type (if provided)
+            if "type" in data:
+                try:
+                    note_type = NoteType(data["type"])
+                    note.type = note_type
+                except ValueError:
+                    current_app.logger.warning(f"Invalid note type during update: {data['type']}. Data: {data}")
+                    return err_resp(
+                        "Invalid note type. Must be one of: cc, exam1, exam2.",
+                        "invalid_note_type",
+                        400,
+                    )
+
+            # 4. Update comment if provided
             if "comment" in data:
-                note.comment = data["comment"] # Allows setting to null or empty string
+                note.comment = data["comment"]
 
-            # 4. Commit Changes
-            db.session.add(note) # Add modified object to session
+            # 5. Commit Changes
+            db.session.add(note)
             db.session.commit()
-            current_app.logger.info(f"Note updated successfully for ID: {note_id} by User ID: {current_user_id}") # Add logging
+            current_app.logger.info(f"Note updated successfully for ID: {note_id} by User ID: {current_user_id}")
 
-            # 5. Serialize & Respond using dump_data
+            # 6. Serialize & Respond using dump_data
             note_resp_data = dump_data(note)
             resp = message(True, "Note updated successfully.")
             resp["note"] = note_resp_data
@@ -386,12 +403,12 @@ class NoteService:
                 f"Schema validation error updating note {note_id}: {err.messages}. Data: {data}"
             )
             return validation_error(False, err.messages), 400
-        except SQLAlchemyError as error: # Catch potential DB errors
-             db.session.rollback()
-             current_app.logger.error(
-                 f"Database error updating note {note_id}: {error}. Data: {data}", exc_info=True
-             )
-             return internal_err_resp()
+        except SQLAlchemyError as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Database error updating note {note_id}: {error}. Data: {data}", exc_info=True
+            )
+            return internal_err_resp()
         except Exception as error:
             db.session.rollback()
             current_app.logger.error(

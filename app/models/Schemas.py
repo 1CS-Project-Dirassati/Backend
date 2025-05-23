@@ -45,6 +45,7 @@ class FeeSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Fee
         load_instance = True
+        include_fk = True
 
 
 class GroupSchema(ma.SQLAlchemyAutoSchema):
@@ -146,3 +147,7 @@ class MessageSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Message
         load_instance = True
+        include_fk = True
+        fields = ('id', 'chat_id', 'sender_id', 'sender_role', 'content', 'created_at')
+        dump_only = ('id', 'sender_id', 'sender_role', 'created_at')
+        load_only = ('chat_id', 'content')

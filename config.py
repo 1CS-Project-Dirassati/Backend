@@ -12,6 +12,9 @@ class Config:
 
     # --- Stripe ---
     STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
+    STRIPE_WEBHOOK_SECRET=os.environ.get("STRIPE_WEBHOOK_SECRET")
+    STRIPE_SUCCESS_URL="https://example.com/success"
+    STRIPE_CANCEL_URL="https://example.com/cancel"
     # --- Flask-Limiter Rate Limits ---
     # Default rate limits per minute for group endpoints
     RATE_LIMIT_GROUP_LIST = "60/minute"  # Allow more frequent listing
@@ -53,6 +56,8 @@ class Config:
     RESET_LINK_EXPIRATION_MINUTES = os.environ.get(
         "RESET_LINK_EXPIRATION_MINUTES", 5
     )  # Example: 5 mins
+
+    
 
 
 class DevelopmentConfig(Config):

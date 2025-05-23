@@ -8,6 +8,7 @@ from werkzeug.security import generate_password_hash
 from app import db
 from app.models import (
     Parent,
+    Student,
 )  # Student, Fee, Notification etc. only needed if manually checking cascade on delete
 
 # Import shared utilities
@@ -73,6 +74,7 @@ class ParentService:
     def get_all_parents(
         is_email_verified=None,
         is_phone_verified=None,
+        student_id=None,
         page=None,
         per_page=None,
         current_user_role=None,  # Kept for explicit check, though decorator also covers it
@@ -87,6 +89,7 @@ class ParentService:
         try:
             query = Parent.query
             filters_applied = {}
+            print("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
 
             # Apply filters
             if is_email_verified is not None:
@@ -95,6 +98,9 @@ class ParentService:
             if is_phone_verified is not None:
                 filters_applied["is_phone_verified"] = is_phone_verified
                 query = query.filter(Parent.is_phone_verified == is_phone_verified)
+            if student_id is not None:
+                filters_applied["student_id"] = student_id
+                query = query.join(Parent.students).filter(Student.id == student_id)
 
             if filters_applied:
                 current_app.logger.debug(

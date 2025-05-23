@@ -18,7 +18,7 @@ from itsdangerous import (
 
 # Import DB instance and models
 from app import db
-from app.models import Student, Level, Group, Parent
+from app.models import Student, Level, Group, Parent, Fee, FeeStatus,FeeSchema
 
 # Import shared utilities
 from app.utils import (
@@ -817,7 +817,6 @@ class StudentService:
     # --- UPDATE Approval Status (Admin) ---
     @staticmethod
     def update_approval_status(student_id: int, data: dict):
-        """Update a student's approval status (Admin)."""
         student = Student.query.get(student_id)
         if not student:
             current_app.logger.info(
@@ -835,21 +834,32 @@ class StudentService:
                     "Missing or invalid 'is_approved' field.", "validation_error", 400
                 )
 
-            new_status = data["is_approved"]
-            if student.is_approved != new_status:
-                student.is_approved = new_status
-                current_app.logger.debug(
-                    f"Setting student {student_id} approval status to: {student.is_approved}"
-                )
-                db.session.add(student)  # Add to session before commit
-                db.session.commit()
-                current_app.logger.info(
-                    f"Student approval status updated successfully for ID: {student_id}"
-                )
-            else:
-                current_app.logger.info(
-                    f"Student {student_id} approval status already {new_status}. No update needed."
-                )
+            from app.models.Schemas import StudentSchema
+            student_approval_schema = StudentSchema(only=("is_approved",),partial=True)
+            validated_data = student_approval_schema.load(data)
+            student.is_approved = validated_data.is_approved
+            current_app.logger.debug(f"Setting student {student_id} approval status to: {student.is_approved}")
+
+            # If student is approved, create a fee for the parent
+            if student.is_approved:
+                from datetime import datetime, timedelta
+
+                new_fee_json = {
+                     "parent_id": student.parent_id,
+                             "amount": 1000.0,
+                             "description": f"Registration fee for student {student.first_name} {student.last_name}",
+                             "due_date": (datetime.now() + timedelta(days=30)).date(),
+                             "status": FeeStatus.UNPAID,
+                             "due_date": datetime.now().date() + timedelta(days=30),
+                }
+                fee = load_data(new_fee_json)
+
+                db.session.add(fee)
+                current_app.logger.info(f"Created fee for parent {student.parent_id} after student {student_id} approval")
+
+            db.session.add(student)
+            db.session.commit()
+            current_app.logger.info(f"Student approval status updated successfully for ID: {student_id}")
 
             student_resp_data = dump_data(student)
             resp = message(

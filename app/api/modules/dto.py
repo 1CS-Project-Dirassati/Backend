@@ -39,6 +39,13 @@ class ModuleDto:
         help="Filter modules by the ID of the level.",
     )
     module_filter_parser.add_argument(
+        "semester_id",
+        type=int,
+        location="args",
+        required=False,
+        help="Filter modules by the ID of the semester.",
+    )
+    module_filter_parser.add_argument(
         "page",
         type=int,
         location="args",
@@ -68,6 +75,10 @@ class ModuleDto:
                 required=True,
                 description="ID of the level this module belongs to",
             ),
+            "semester_id": fields.Integer(
+                required=True,
+                description="ID of the semester this module belongs to",
+            ),
         },
     )
 
@@ -79,6 +90,7 @@ class ModuleDto:
             "name": fields.String(description="Module name"),
             "description": fields.String(description="Module description"),
             "level_id": fields.Integer(description="ID of the level this module belongs to"),
+            "semester_id": fields.Integer(description="ID of the semester this module belongs to"),
             "message": fields.String(description="Response message"),
             "status": fields.Boolean(description="Response status"),
         },
@@ -107,6 +119,7 @@ class ModuleDto:
             "name": fields.String(required=True, description="Module name"),
             "description": fields.String(description="Module description"),
             "level_id": fields.Integer(required=True, description="ID of the level this module belongs to"),
+            "semester_id": fields.Integer(required=True, description="ID of the semester this module belongs to"),
         },
     )
 
@@ -116,5 +129,6 @@ class ModuleDto:
             "name": fields.String(description="Module name"),
             "description": fields.String(description="Module description"),
             "level_id": fields.Integer(description="ID of the level this module belongs to"),
+            "semester_id": fields.Integer(description="ID of the semester this module belongs to"),
         },
     )

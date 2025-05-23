@@ -14,7 +14,7 @@ from app.models import Message, Chat, Parent, Teacher
 # Import shared utilities
 from app.utils import (
     err_resp,
-    message,
+    message as message_response,
     internal_err_resp,
     validation_error,
 )
@@ -33,9 +33,9 @@ class MessageService:
             return False
         if user_role == "admin":
             return True
-        if user_role == "parent" and chat.parent_id == user_id:
+        if user_role == "parent" and int(chat.parent_id) == int(user_id):
             return True
-        if user_role == "teacher" and chat.teacher_id == user_id:
+        if user_role == "teacher" and int(chat.teacher_id) == int(user_id):
             return True
         return False
 
@@ -69,7 +69,7 @@ class MessageService:
 
         try:
             message_data = dump_data(message_obj)
-            resp = message(True, "Message data sent successfully")
+            resp = message_response(True, "Message data sent successfully")
             resp["message"] = message_data
             current_app.logger.debug(f"Successfully retrieved message ID {message_id}")
             return resp, 200
@@ -195,9 +195,25 @@ class MessageService:
 
             # 6. Serialize results using dump_data
             messages_data = dump_data(paginated_messages.items, many=True)
+            
+            # Add 'me' field to each message based on current user
+            for message in messages_data:
+                # Ensure content is present
+                if 'content' not in message:
+                    message_obj = Message.query.get(message['id'])
+                    if message_obj:
+                        message['content'] = message_obj.content
+                
+                # Set me field based on current user
+                message['me'] = (
+                    int(message['sender_id']) == int(current_user_id) and 
+                    message['sender_role'] == current_user_role
+                )
+                # Keep sender_role in response for reference
+                # del message['sender_role']
 
             current_app.logger.debug(f"Serialized {len(messages_data)} messages")
-            resp = message(True, "Messages list retrieved successfully")
+            resp = message_response(True, "Messages list retrieved successfully")
             # Add pagination metadata
             resp["messages"] = messages_data
             resp["total"] = paginated_messages.total
@@ -221,23 +237,19 @@ class MessageService:
 
     # --- CREATE (Parent/Teacher) ---
     @staticmethod
-    # Add type hints
     def create_message(data: dict, current_user_id: int, current_user_role: str):
         """Send a new message to a chat. Assumes @roles_required handled base role."""
         try:
             # 1. Schema Validation (Requires chat_id, content)
-            # Using temporary manual load until load_data adjusted/confirmed.
-            from app.models.Schemas import MessageSchema  # Temp import
+            from app.models.Schemas import MessageSchema
 
-            # Exclude sender info as it's derived
-            message_create_schema = MessageSchema(
-                exclude=("sender_id", "sender_role")
-            )  # Temp instance
-            validated_data = message_create_schema.load(data)
-            # End Temporary block
-
-            chat_id = validated_data["chat_id"]
-            content = validated_data["content"]
+            # Create schema instance for validation
+            message_schema = MessageSchema()
+            validated_data = message_schema.load(data)
+            
+            # Extract data from validated instance
+            chat_id = validated_data.chat_id
+            content = validated_data.content
             current_app.logger.debug(
                 f"Message data validated by schema for chat {chat_id}."
             )
@@ -263,7 +275,12 @@ class MessageService:
                 )
 
             # 3. Create Instance & Commit
-            new_message = load_data(data)
+            new_message = Message(
+                chat_id=chat_id,
+                content=content,
+                sender_id=current_user_id,
+                sender_role=current_user_role
+            )
             db.session.add(new_message)
             db.session.commit()
             current_app.logger.info(
@@ -272,7 +289,7 @@ class MessageService:
 
             # 4. Serialize & Respond using dump_data
             message_resp_data = dump_data(new_message)
-            resp = message(True, "Message sent successfully.")
+            resp = message_response(True, "Message sent successfully.")
             resp["message"] = message_resp_data
             return resp, 201
 
@@ -363,7 +380,7 @@ class MessageService:
 
             # 4. Serialize & Respond using dump_data
             message_resp_data = dump_data(message_obj)
-            resp = message(True, "Message updated successfully.")
+            resp = message_response(True, "Message updated successfully.")
             resp["message"] = message_resp_data
             return resp, 200
 

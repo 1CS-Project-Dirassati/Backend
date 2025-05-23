@@ -26,6 +26,7 @@ class Semester(Model):
     )
 
     level = relationship("Level", back_populates="semesters")
+    modules = relationship("Module", back_populates="semester", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="semester")
 
     def __repr__(self):
