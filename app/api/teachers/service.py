@@ -152,7 +152,7 @@ class TeacherService:
         try:
             from app.models.Schemas import TeacherSchema  # Using SQLAlchemyAutoSchema with load_instance=True
             teacher_schema = TeacherSchema()
-
+            
             teacher_instance = teacher_schema.load(data)  # <- Already a Teacher object now!
 
             # Hash the password AFTER loading

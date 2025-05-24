@@ -827,9 +827,6 @@ class StudentService:
         try:
             # Manual validation for single field
             if "is_approved" not in data or not isinstance(data["is_approved"], bool):
-                # Use validation_error helper if available and appropriate
-                # return validation_error(False, {'is_approved': ['Missing or invalid data.']}), 400
-                # Or simpler err_resp
                 return err_resp(
                     "Missing or invalid 'is_approved' field.", "validation_error", 400
                 )
@@ -843,19 +840,30 @@ class StudentService:
             # If student is approved, create a fee for the parent
             if student.is_approved:
                 from datetime import datetime, timedelta
+                from app.api.fees.utils import load_data as load_fee_data
 
+                # Calculate due date (30 days from now)
+                due_date = datetime.now().date() + timedelta(days=30)
+                
                 new_fee_json = {
-                     "parent_id": student.parent_id,
-                             "amount": 1000.0,
-                             "description": f"Registration fee for student {student.first_name} {student.last_name}",
-                             "due_date": (datetime.now() + timedelta(days=30)).date(),
-                             "status": FeeStatus.UNPAID,
-                             "due_date": datetime.now().date() + timedelta(days=30),
+                    "parent_id": student.parent_id,
+                    "amount": 1000.0,
+                    "description": f"Registration fee for student {student.first_name} {student.last_name}",
+                    "due_date": due_date.isoformat(),  # Convert to ISO format string
+                    "status": FeeStatus.UNPAID  # Use the enum directly
                 }
-                fee = load_data(new_fee_json)
-
-                db.session.add(fee)
-                current_app.logger.info(f"Created fee for parent {student.parent_id} after student {student_id} approval")
+                
+                current_app.logger.debug(f"Attempting to create fee with data: {new_fee_json}")
+                
+                try:
+                    fee = load_fee_data(new_fee_json)
+                    current_app.logger.debug(f"Fee object created successfully: {fee}")
+                    db.session.add(fee)
+                    current_app.logger.info(f"Created fee for parent {student.parent_id} after student {student_id} approval")
+                except Exception as fee_error:
+                    current_app.logger.error(f"Error creating fee: {str(fee_error)}", exc_info=True)
+                    # Continue with student approval even if fee creation fails
+                    pass
 
             db.session.add(student)
             db.session.commit()
@@ -868,7 +876,6 @@ class StudentService:
             resp["student"] = student_resp_data
             return resp, 200
 
-        # Removed ValidationError catch as manual check is done
         except SQLAlchemyError as error:
             db.session.rollback()
             current_app.logger.error(

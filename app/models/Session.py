@@ -1,5 +1,7 @@
 from app import db
 from . import Column, Model, relationship
+from .TimeSlot import TimeSlot
+from sqlalchemy import Enum as SQLAlchemyEnum
 
 
 class Session(Model):
@@ -12,7 +14,7 @@ class Session(Model):
     group_id = Column(db.Integer, db.ForeignKey("group.id"), nullable=False, index=True)
     semester_id = Column(db.Integer, db.ForeignKey("semester.id"), nullable=False, index=True)
     salle_id = Column(db.Integer, db.ForeignKey("salle.id"), nullable=True)
-    start_time = Column(db.DateTime(timezone=True), nullable=False, index=True)
+    time_slot = Column(SQLAlchemyEnum(TimeSlot), nullable=False, index=True)
     weeks = Column(db.Integer, nullable=True)
 
     # Relationships
@@ -24,4 +26,4 @@ class Session(Model):
     absences = relationship("Absence", back_populates="session", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Session id={self.id} module_id={self.module_id} group_id={self.group_id} start={self.start_time}>"
+        return f"<Session id={self.id} module_id={self.module_id} group_id={self.group_id} time_slot={self.time_slot.value}>"

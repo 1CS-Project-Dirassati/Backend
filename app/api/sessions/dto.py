@@ -1,5 +1,6 @@
 from flask_restx import Namespace, fields
 from flask_restx.reqparse import RequestParser
+from app.models.TimeSlot import TimeSlot
 
 
 class SessionDto:
@@ -33,6 +34,13 @@ class SessionDto:
         required=False,
         help="Filter sessions by the ID of the semester .",
     )
+    session_filter_parser.add_argument(
+        "week",
+        type=int,
+        location="args",
+        required=False,
+        help="Filter sessions by the week number.",
+    )
     session_filter_parser.add_argument( # Added page
         'page',
         type=int,
@@ -59,36 +67,60 @@ class SessionDto:
                 readonly=True, description="Session unique identifier"
             ),
             "teacher_id": fields.Integer(
-                required=True, description="ID of the teacher conducting the session" # Clarified description
+                required=True, description="ID of the teacher conducting the session"
+            ),
+            "teacher_name": fields.String(
+                readonly=True, description="Name of the teacher"
             ),
             "module_id": fields.Integer(
                 required=True, description="ID of the module being taught"
             ),
+            "module_name": fields.String(
+                readonly=True, description="Name of the module"
+            ),
             "group_id": fields.Integer(
-                required=True, description="ID of the group attending the session" # Clarified description
+                required=True, description="ID of the group attending the session"
+            ),
+            "group_name": fields.String(
+                readonly=True, description="Name of the group"
             ),
             "semester_id": fields.Integer(
-                required=True, description="ID of the semester the session belongs to" # Clarified description
+                required=True, description="ID of the semester the session belongs to"
+            ),
+            "semester_name": fields.String(
+                readonly=True, description="Name of the semester"
             ),
             "salle_id": fields.Integer(
-                required=False, # Explicitly False
-                description="ID of the room (salle) where the session takes place, if assigned" # Clarified description
+                required=False,
+                description="ID of the room (salle) where the session takes place, if assigned"
             ),
-            "start_time": fields.DateTime(
+            "salle_name": fields.String(
+                readonly=True, description="Name of the room (salle)"
+            ),
+            "time_slot": fields.String(
                 required=True,
-                description="Start date and time of the session (UTC, ISO 8601 format)", # Added UTC
-                dt_format="iso8601",
+                description="Time slot for the session (e.g., 'd1h8-10' for Monday 8:00-10:00)",
+                enum=[slot.value for slot in TimeSlot]
             ),
             "weeks": fields.Integer(
-                required=False, # Explicitly False
-                description="Number of consecutive weeks the session repeats (e.g., 1 for a single session)" # Clarified description
+                required=False,
+                description="Number of consecutive weeks the session repeats (e.g., 1 for a single session)"
             ),
-            # Consider adding nested fields for related objects if needed for display
-            # "teacher_name": fields.String(attribute="teacher.user.name", readonly=True), # Example using User relation
-            # "group_name": fields.String(attribute="group.name", readonly=True), # Example
-            # "module_name": fields.String(attribute="module.name", readonly=True), # Example
         },
     )
+
+    # Define time slot response model
+    time_slot_pair = api.model('TimeSlotPair', {
+        'teacher_id': fields.Integer(description='ID of the teacher'),
+        'teacher_name': fields.String(description='Name of the teacher'),
+        'module_id': fields.Integer(description='ID of the module'),
+        'module_name': fields.String(description='Name of the module')
+    })
+
+    time_slots_response = api.model('TimeSlotsResponse', {
+        'message': fields.String(description='Response message'),
+        'time_slots': fields.Raw(description='Map of time slots to teacher-module pairs')
+    })
 
     # Define the standard response structure for a single session
     data_resp = api.model(
@@ -107,9 +139,8 @@ class SessionDto:
             "status": fields.Boolean(description="Indicates success or failure"),
             "message": fields.String(description="Response message"),
             "sessions": fields.List(
-                fields.Nested(session), description="List of session data for the current page" # Updated description
+                fields.Nested(session), description="List of session data for the current page"
             ),
-            # Pagination metadata fields
             "total": fields.Integer(description="Total number of sessions matching the query"),
             "pages": fields.Integer(description="Total number of pages"),
             "current_page": fields.Integer(description="The current page number"),
@@ -131,13 +162,13 @@ class SessionDto:
             "semester_id": fields.Integer(
                 required=True, description="ID of the semester"
             ),
-            "salle_id": fields.Integer(required=False, description="ID of the room (salle), optional"), # Required=False
-            "start_time": fields.DateTime(
+            "salle_id": fields.Integer(required=False, description="ID of the room (salle), optional"),
+            "time_slot": fields.String(
                 required=True,
-                description="Start date and time (UTC, ISO 8601 format)", # Added UTC
-                dt_format="iso8601",
+                description="Time slot for the session (e.g., 'd1h8-10' for Monday 8:00-10:00)",
+                enum=[slot.value for slot in TimeSlot]
             ),
-            "weeks": fields.Integer(required=False, description="Number of weeks the session repeats, optional"), # Required=False
+            "weeks": fields.Integer(required=False, description="Number of weeks the session repeats, optional"),
         },
     )
     session_update = api.model(
@@ -148,9 +179,9 @@ class SessionDto:
             "group_id": fields.Integer(description="New ID of the group"),
             "semester_id": fields.Integer(description="New ID of the semester"),
             "salle_id": fields.Integer(description="New ID of the room (salle)"),
-            "start_time": fields.DateTime(
-                description="New start date and time (UTC, ISO 8601 format)", # Added UTC
-                dt_format="iso8601",
+            "time_slot": fields.String(
+                description="New time slot for the session (e.g., 'd1h8-10' for Monday 8:00-10:00)",
+                enum=[slot.value for slot in TimeSlot]
             ),
             "weeks": fields.Integer(
                 description="New number of weeks the session repeats"

@@ -45,20 +45,31 @@ class GroupService:
 
     @staticmethod
     def get_all_groups(
-        level_id=None, page=None, per_page=None
-    ):  # level_id: Optional[int] = None, page: Optional[int] = None) -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
+        level_id=None, page=None, per_page=None, teacher_id=None
+    ):
         """Get a list of all groups, optionally filtered by level_id and paginated."""
-        page = page or 1  # Suggestion: Ensure page defaults to 1 if None
-        per_page = per_page or 10  # Suggestion: Get per_page from config
+        page = page or 1
+        per_page = per_page or 10
 
         try:
-            query = Group.query
+            # If teacher_id is provided (from current user), get only their groups
+            if teacher_id is not None:
+                current_app.logger.debug(
+                    f"Getting groups for current teacher (ID: {teacher_id})"
+                )
+                # Get unique groups from teacher's sessions
+                query = Group.query.join(Group.sessions).filter(
+                    Group.sessions.any(teacher_id=teacher_id)
+                ).distinct()
+            else:
+                # For non-teachers, get all groups
+                query = Group.query
 
-            # Apply the filter if level_id is provided
+            # Apply the level filter if level_id is provided
             if level_id is not None:
                 current_app.logger.debug(
                     f"Filtering groups by level_id: {level_id}"
-                )  # Suggestion: Add logging
+                )
                 level_exists = (
                     db.session.query(Level.id).filter_by(id=level_id).scalar()
                     is not None
@@ -69,32 +80,32 @@ class GroupService:
                     )
                     return err_resp(
                         "Level specified in filter not found", "level_filter_404", 404
-                    )  # Or return empty list with 200
+                    )
 
-                query = query.filter(Group.level_id == level_id)  # type: ignore[reportGeneralTypeIssues] # Suggestion: Use filter for clarity
+                query = query.filter(Group.level_id == level_id)
 
             # Add ordering
-            query = query.order_by(Group.name)  # type: ignore[reportGeneralTypeIssues] # Suggestion: Use order_by for consistent ordering
+            query = query.order_by(Group.name)
 
             # Implement pagination
             current_app.logger.debug(
                 f"Paginating groups: page={page}, per_page={per_page}"
-            )  # Suggestion: Add logging
+            )
             paginated_groups = query.paginate(
                 page=page, per_page=per_page, error_out=False
             )
             current_app.logger.debug(
                 f"Paginated groups: {paginated_groups.items}"
-            )  # Suggestion: Add logging
+            )
 
             # Serialize the results using dump_data
             groups_data = dump_data(
                 paginated_groups.items, many=True
-            )  # Use .items for paginated list
+            )
 
             current_app.logger.debug(
                 f"Serialized {len(groups_data)} groups"
-            )  # Suggestion: Add logging
+            )
             resp = message(True, "Groups list retrieved successfully")
             # Add pagination metadata to the response
             resp["groups"] = groups_data
@@ -107,13 +118,15 @@ class GroupService:
 
             current_app.logger.debug(
                 f"Successfully retrieved groups page {page}. Total: {paginated_groups.total}"
-            )  # Suggestion: Add logging
+            )
             return resp, 200
 
         except Exception as error:
             log_msg = f"Error getting groups"
             if level_id is not None:
                 log_msg += f" with level_id filter {level_id}"
+            if teacher_id is not None:
+                log_msg += f" for teacher {teacher_id}"
             if page is not None:
                 log_msg += f", page {page}"
             current_app.logger.error(f"{log_msg}: {error}", exc_info=True)

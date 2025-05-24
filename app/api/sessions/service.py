@@ -13,7 +13,11 @@ from app.models import (
     Group,
     Semester,
     Salle,
+    Level,
+    TeacherModuleAssociation,
+    Student,
 )
+from app.models.TimeSlot import TimeSlot
 
 # Import shared utilities
 from app.utils import (
@@ -56,6 +60,62 @@ class SessionService:
 
         return errors
 
+    # --- GET Group Time Slots ---
+    @staticmethod
+    def get_group_time_slots(group_id):
+        """Get a map of time slots with teacher-module pairs for a specific group"""
+        try:
+            # 1. Get the group and verify it exists
+            group = Group.query.get(group_id)
+            if not group:
+                return err_resp("Group not found!", "group_404", 404)
+
+            # 2. Get all modules for the group's level
+            level_modules = Module.query.filter_by(level_id=group.level_id).all()
+            if not level_modules:
+                return message(True, "No modules found for this level"), 200
+
+            # 3. Initialize the time slot map with all possible time slots
+            time_slots = {slot.value: [] for slot in TimeSlot}
+
+            # 4. For each module, get assigned teachers and check their availability
+            for module in level_modules:
+                # Get teachers assigned to this module
+                teacher_associations = TeacherModuleAssociation.query.filter_by(
+                    module_id=module.id
+                ).all()
+
+                for assoc in teacher_associations:
+                    teacher = Teacher.query.get(assoc.teacher_id)
+                    if not teacher:
+                        continue
+
+                    # Get all sessions for this teacher to check availability
+                    teacher_sessions = Session.query.filter_by(teacher_id=teacher.id).all()
+                    occupied_slots = {session.time_slot.value for session in teacher_sessions}
+
+                    # For each time slot, check if teacher is available
+                    for slot in TimeSlot:
+                        if slot.value not in occupied_slots:
+                            # Add teacher-module pair to this time slot
+                            time_slots[slot.value].append({
+                                "teacher_id": teacher.id,
+                                "teacher_name": f"{teacher.first_name} {teacher.last_name}",
+                                "module_id": module.id,
+                                "module_name": module.name
+                            })
+
+            resp = message(True, "Time slot map retrieved successfully")
+            resp["time_slots"] = time_slots
+            return resp, 200
+
+        except Exception as error:
+            current_app.logger.error(
+                f"Error getting time slots for group {group_id}: {error}",
+                exc_info=True
+            )
+            return internal_err_resp()
+
     # --- GET Single ---
     @staticmethod
     def get_session_data(
@@ -69,8 +129,23 @@ class SessionService:
             )  # Add logging
             return err_resp("Session not found!", "session_404", 404)
         try:
+            # Get related data
+            teacher = Teacher.query.get(session.teacher_id)
+            module = Module.query.get(session.module_id)
+            group = Group.query.get(session.group_id)
+            semester = Semester.query.get(session.semester_id)
+            salle = Salle.query.get(session.salle_id) if session.salle_id else None
+
             # Use dump_data for serialization
             session_data = dump_data(session)
+            
+            # Add names to the response
+            session_data["teacher_name"] = f"{teacher.first_name} {teacher.last_name}" if teacher else None
+            session_data["module_name"] = module.name if module else None
+            session_data["group_name"] = group.name if group else None
+            session_data["semester_name"] = semester.name if semester else None
+            session_data["salle_name"] = salle.name if salle else None
+
             resp = message(True, "Session data sent successfully")
             resp["session"] = session_data
             current_app.logger.debug(
@@ -87,64 +162,79 @@ class SessionService:
     # --- GET List with Filters and Pagination ---
     @staticmethod
     def get_all_sessions(
-        group_id=None, teacher_id=None, page=None, per_page=None,semester_id=None
-    ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
+        group_id=None, teacher_id=None, page=None, per_page=None, semester_id=None, week=None,
+        current_user_id=None, current_user_role=None
+    ):
         """Get a list of all sessions, optionally filtered and paginated."""
-        page = page or 1  # Ensure page defaults to 1 if None
-        per_page = per_page or 10  # Get per_page from config or default
+        page = page or 1
+        per_page = per_page or 10
 
         try:
             query = Session.query
 
-            # Apply filters
+            # Apply role-based filtering
+            if current_user_role == "teacher":
+                current_app.logger.debug(f"Filtering sessions for teacher ID: {current_user_id}")
+                query = query.filter(Session.teacher_id == current_user_id)
+            elif current_user_role == "student":
+                # Get the student's group
+                student = Student.query.get(current_user_id)
+                if student and student.group_id:
+                    current_app.logger.debug(f"Filtering sessions for student {current_user_id}'s group: {student.group_id}")
+                    query = query.filter(Session.group_id == student.group_id)
+                else:
+                    current_app.logger.warning(f"Student {current_user_id} has no group assigned")
+                    return message(True, "No sessions found - student not assigned to a group"), 200
+
+            # Apply additional filters if provided
             if group_id is not None:
-                current_app.logger.debug(
-                    f"Filtering sessions by group_id: {group_id}"
-                )  # Add logging
-                # Optional: Check if group exists? Maybe not necessary for filtering.
+                current_app.logger.debug(f"Filtering sessions by group_id: {group_id}")
                 query = query.filter(Session.group_id == group_id)
             if teacher_id is not None:
-                current_app.logger.debug(
-                    f"Filtering sessions by teacher_id: {teacher_id}"
-                )  # Add logging
-                # Optional: Check if teacher exists?
+                current_app.logger.debug(f"Filtering sessions by teacher_id: {teacher_id}")
                 query = query.filter(Session.teacher_id == teacher_id)
-            # Add other filters (semester, date range) here if needed
-
-            
-
-
             if semester_id is not None:
-                current_app.logger.debug(
-                    f"Filtering sessions by semester_id: {semester_id}"
-                )  # Add logging
-                # Optional: Check if teacher exists?
+                current_app.logger.debug(f"Filtering sessions by semester_id: {semester_id}")
                 query = query.filter(Session.semester_id == semester_id)
+            if week is not None:
+                current_app.logger.debug(f"Filtering sessions by week: {week}")
+                query = query.filter(Session.weeks == week)
 
-            # Add ordering, e.g., by start time
-            query = query.order_by(Session.start_time)
+            # Add ordering by time_slot
+            query = query.order_by(Session.time_slot)
 
             # Implement pagination
-            current_app.logger.debug(
-                f"Paginating sessions: page={page}, per_page={per_page}"
-            )  # Add logging
-            paginated_sessions = query.paginate(
-                page=page, per_page=per_page, error_out=False
-            )
-            current_app.logger.debug(
-                f"Paginated sessions items count: {len(paginated_sessions.items)}"
-            )  # Add logging
+            current_app.logger.debug(f"Paginating sessions: page={page}, per_page={per_page}")
+            paginated_sessions = query.paginate(page=page, per_page=per_page, error_out=False)
+            current_app.logger.debug(f"Paginated sessions items count: {len(paginated_sessions.items)}")
+
+            # Get all related data in one go to avoid N+1 queries
+            session_ids = [s.id for s in paginated_sessions.items]
+            teachers = {t.id: t for t in Teacher.query.filter(Teacher.id.in_([s.teacher_id for s in paginated_sessions.items])).all()}
+            modules = {m.id: m for m in Module.query.filter(Module.id.in_([s.module_id for s in paginated_sessions.items])).all()}
+            groups = {g.id: g for g in Group.query.filter(Group.id.in_([s.group_id for s in paginated_sessions.items])).all()}
+            semesters = {s.id: s for s in Semester.query.filter(Semester.id.in_([s.semester_id for s in paginated_sessions.items])).all()}
+            salles = {s.id: s for s in Salle.query.filter(Salle.id.in_([s.salle_id for s in paginated_sessions.items if s.salle_id])).all()}
 
             # Serialize the results using dump_data
-            sessions_data = dump_data(
-                paginated_sessions.items, many=True
-            )  # Use .items for paginated list
+            sessions_data = dump_data(paginated_sessions.items, many=True)
 
-            current_app.logger.debug(
-                f"Serialized {len(sessions_data)} sessions"
-            )  # Add logging
+            # Add names to each session
+            for session_data in sessions_data:
+                teacher = teachers.get(session_data["teacher_id"])
+                module = modules.get(session_data["module_id"])
+                group = groups.get(session_data["group_id"])
+                semester = semesters.get(session_data["semester_id"])
+                salle = salles.get(session_data["salle_id"]) if session_data.get("salle_id") else None
+
+                session_data["teacher_name"] = f"{teacher.first_name} {teacher.last_name}" if teacher else None
+                session_data["module_name"] = module.name if module else None
+                session_data["group_name"] = group.name if group else None
+                session_data["semester_name"] = semester.name if semester else None
+                session_data["salle_name"] = salle.name if salle else None
+
+            current_app.logger.debug(f"Serialized {len(sessions_data)} sessions")
             resp = message(True, "Sessions list retrieved successfully")
-            # Add pagination metadata to the response
             resp["sessions"] = sessions_data
             resp["total"] = paginated_sessions.total
             resp["pages"] = paginated_sessions.pages
@@ -153,9 +243,7 @@ class SessionService:
             resp["has_next"] = paginated_sessions.has_next
             resp["has_prev"] = paginated_sessions.has_prev
 
-            current_app.logger.debug(
-                f"Successfully retrieved sessions page {page}. Total: {paginated_sessions.total}"
-            )  # Add logging
+            current_app.logger.debug(f"Successfully retrieved sessions page {page}. Total: {paginated_sessions.total}")
             return resp, 200
 
         except Exception as error:
@@ -177,63 +265,73 @@ class SessionService:
     def create_session(
         data: dict,
     ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
-        """Create a new session after validating input data"""
+        """Create new sessions for each week of the semester"""
         try:
-            # 1. Schema Validation & Deserialization using load_data
+            # 1. Get semester duration
+            semester = Semester.query.get(data.get("semester_id"))
+            if not semester:
+                return err_resp("Semester not found!", "semester_404", 404)
+            
+            if not semester.duration:
+                return err_resp("Semester duration not set!", "semester_duration_404", 400)
+
+            # 2. Schema Validation & Deserialization using load_data
             new_session_obj = load_data(data)
             current_app.logger.debug(
                 f"Session data validated by schema. Proceeding with FK checks."
             )
 
-            # 2. Foreign Key Validation (on the deserialized data dictionary 'data')
-            fk_errors = SessionService._validate_foreign_keys(
-                data
-            )  # Validate original input data
+            # 3. Foreign Key Validation
+            fk_errors = SessionService._validate_foreign_keys(data)
             if fk_errors:
                 current_app.logger.warning(
                     f"Foreign key validation failed creating session: {fk_errors}. Data: {data}"
                 )
                 return validation_error(False, fk_errors), 400
 
-            # 3. Add to DB Session & Commit
-            db.session.add(new_session_obj)
+            # 4. Create sessions for each week
+            created_sessions = []
+            for week in range(1, semester.duration + 1):
+                session_obj = load_data(data)  # Create new instance for each week
+                session_obj.weeks = week
+                db.session.add(session_obj)
+                created_sessions.append(session_obj)
+
+            # 5. Commit all sessions
             db.session.commit()
             current_app.logger.info(
-                f"Session created successfully with ID: {new_session_obj.id}"
+                f"Created {len(created_sessions)} sessions for semester {semester.id}"
             )
 
-            # 4. Serialize & Respond using dump_data
-            session_resp_data = dump_data(new_session_obj)
-            resp = message(True, "Session created successfully")
-            resp["session"] = session_resp_data
+            # 6. Serialize & Respond
+            sessions_data = dump_data(created_sessions, many=True)
+            resp = message(True, f"Created {len(created_sessions)} sessions successfully")
+            resp["sessions"] = sessions_data
             return resp, 201
 
         except ValidationError as err:
-            db.session.rollback()  # Rollback on validation error
-            current_app.logger.warning(
-                f"Schema validation error creating session: {err.messages}. Data: {data}"
-            )
-            return validation_error(False, err.messages), 400
-        except (
-            IntegrityError
-        ) as error:  # Catch potential unique constraints if added later
             db.session.rollback()
             current_app.logger.warning(
-                f"Database integrity error creating session: {error}. Data: {data}",
+                f"Schema validation error creating sessions: {err.messages}. Data: {data}"
+            )
+            return validation_error(False, err.messages), 400
+        except IntegrityError as error:
+            db.session.rollback()
+            current_app.logger.warning(
+                f"Database integrity error creating sessions: {error}. Data: {data}",
                 exc_info=True,
             )
-            # Add specific checks if needed, e.g., for unique constraints
-            return internal_err_resp()  # Or a more specific 409 if applicable
+            return internal_err_resp()
         except SQLAlchemyError as error:
             db.session.rollback()
             current_app.logger.error(
-                f"Database error creating session: {error}. Data: {data}", exc_info=True
+                f"Database error creating sessions: {error}. Data: {data}", exc_info=True
             )
             return internal_err_resp()
         except Exception as error:
             db.session.rollback()
             current_app.logger.error(
-                f"Unexpected error creating session: {error}. Data: {data}",
+                f"Unexpected error creating sessions: {error}. Data: {data}",
                 exc_info=True,
             )
             return internal_err_resp()

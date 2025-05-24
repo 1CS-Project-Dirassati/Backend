@@ -3,13 +3,14 @@ from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from marshmallow import ValidationError
 from sqlalchemy.orm import joinedload
-from datetime import datetime  # For date parsing
+from datetime import datetime, timedelta  # For date parsing and calculations
 
 # Import DB instance and models
 from app import db
 
 # Import related models needed for checks and context
-from app.models import Absence, Student, Session, Teacher, Parent
+from app.models import Absence, Student, Session, Teacher, Parent, Semester
+from app.models.TimeSlot import TimeSlot
 
 # Import shared utilities
 from app.utils import (
@@ -24,6 +25,30 @@ from .utils import dump_data, load_data
 
 
 class AbsenceService:
+
+    @staticmethod
+    def _calculate_absence_date(session):
+        """Calculate the actual date of absence based on session week and time slot"""
+        if not session or not session.semester or not session.time_slot:
+            return None
+
+        # Get semester start date
+        semester_start = session.semester.start_date
+        if not semester_start:
+            return None
+
+        # Calculate weeks to add (subtract 1 since weeks are 1-based)
+        weeks_to_add = session.weeks - 1
+
+        # Get the day of week from time slot (e.g., 'd1' means Monday)
+        day_code = session.time_slot.value[:2]  # Extract 'd1', 'd2', etc.
+        day_offset = int(day_code[1]) - 1  # Convert to 0-based (0=Monday)
+
+        # Calculate the date
+        base_date = semester_start + timedelta(weeks=weeks_to_add)
+        absence_date = base_date + timedelta(days=day_offset)
+
+        return absence_date
 
     # --- Helper for Foreign Key Validation ---
     @staticmethod
@@ -49,12 +74,10 @@ class AbsenceService:
         """Get absence data by ID, with record-level authorization check"""
         # Eager load related data for context and auth checks
         absence = Absence.query.options(
-            joinedload(Absence.student).joinedload(
-                Student.parent
-            ),  # Load student and their parent
-            joinedload(Absence.session).joinedload(
-                Session.teacher
-            ),  # Load session and its teacher
+            joinedload(Absence.student).joinedload(Student.parent),
+            joinedload(Absence.session).joinedload(Session.teacher),
+            joinedload(Absence.session).joinedload(Session.module),
+            joinedload(Absence.session).joinedload(Session.semester)
         ).get(absence_id)
 
         if not absence:
@@ -67,24 +90,15 @@ class AbsenceService:
         if current_user_role == "admin":
             can_access = True
             log_reason = "User is admin."
-        elif (
-            absence.session and absence.session.teacher_id == int(current_user_id)
-        ):  # Check if user is the teacher of the session
+        elif absence.session and absence.session.teacher_id == int(current_user_id):
             can_access = True
             log_reason = "User is the teacher of the session."
         elif current_user_role == "student" and absence.student_id == int(current_user_id):
             can_access = True
             log_reason = "User is the student associated with the absence."
-        # Check parent access using the eager-loaded student.parent_id
-        elif (
-            current_user_role == "parent"
-            and absence.student
-            and absence.student.parent_id == int(current_user_id)
-        ):
+        elif current_user_role == "parent" and absence.student and absence.student.parent_id == int(current_user_id):
             can_access = True
-            log_reason = (
-                "User is the parent of the student associated with the absence."
-            )
+            log_reason = "User is the parent of the student associated with the absence."
 
         if not can_access:
             current_app.logger.warning(
@@ -95,17 +109,20 @@ class AbsenceService:
                 "record_access_denied",
                 403,
             )
-        current_app.logger.debug(
-            f"Record access granted for user {current_user_id} to absence {absence_id}. Reason: {log_reason}"
-        )
 
         try:
             absence_data = dump_data(absence)
+            
+            # Add names and calculate absence date
+            if absence.student:
+                absence_data["student_name"] = f"{absence.student.first_name} {absence.student.last_name}"
+            if absence.session and absence.session.module:
+                absence_data["module_name"] = absence.session.module.name
+            if absence.session:
+                absence_data["absence_date"] = AbsenceService._calculate_absence_date(absence.session)
+
             resp = message(True, "Absence record data sent successfully")
             resp["absence"] = absence_data
-            current_app.logger.debug(
-                f"Successfully retrieved absence record ID {absence_id}"
-            )
             return resp, 200
         except Exception as error:
             current_app.logger.error(
@@ -133,60 +150,37 @@ class AbsenceService:
         per_page = per_page or 10
 
         try:
-            # Eager load student->parent and session->teacher for filtering/auth
+            # Eager load all related data
             query = Absence.query.options(
                 joinedload(Absence.student).joinedload(Student.parent),
                 joinedload(Absence.session).joinedload(Session.teacher),
+                joinedload(Absence.session).joinedload(Session.module),
+                joinedload(Absence.session).joinedload(Session.semester)
             )
 
-            child_ids_for_parent = []  # Store child IDs if user is parent
+            child_ids_for_parent = []
 
             # --- Role-Based Data Scoping ---
             if current_user_role == "student":
-                current_app.logger.debug(
-                    f"Scoping absences list for student ID: {current_user_id}"
-                )
+                current_app.logger.debug(f"Scoping absences list for student ID: {current_user_id}")
                 query = query.filter(Absence.student_id == int(current_user_id))
-                student_id = current_user_id  # Force student_id filter
-                session_id = None  # Ignore session filter from student
+                student_id = current_user_id
+                session_id = None
             elif current_user_role == "parent":
-                parent = Parent.query.options(joinedload(Parent.students)).get(
-                    current_user_id
-                )
+                parent = Parent.query.options(joinedload(Parent.students)).get(current_user_id)
                 if not parent:
-                    return (
-                        message(True, "Parent profile not found, cannot list absences.")
-                        | {
-                            "absences": [],
-                            "total": 0,
-                            "pages": 0,
-                            "current_page": 1,
-                            "per_page": per_page,
-                            "has_next": False,
-                            "has_prev": False,
-                        },
-                        200,
-                    )
+                    return message(True, "Parent profile not found, cannot list absences.") | {
+                        "absences": [], "total": 0, "pages": 0, "current_page": 1,
+                        "per_page": per_page, "has_next": False, "has_prev": False
+                    }, 200
 
                 child_ids_for_parent = [student.id for student in parent.students]
                 if not child_ids_for_parent:
-                    return (
-                        message(True, "No students found for this parent.")
-                        | {
-                            "absences": [],
-                            "total": 0,
-                            "pages": 0,
-                            "current_page": 1,
-                            "per_page": per_page,
-                            "has_next": False,
-                            "has_prev": False,
-                        },
-                        200,
-                    )
+                    return message(True, "No students found for this parent.") | {
+                        "absences": [], "total": 0, "pages": 0, "current_page": 1,
+                        "per_page": per_page, "has_next": False, "has_prev": False
+                    }, 200
 
-                current_app.logger.debug(
-                    f"Scoping absences list for parent ID: {current_user_id}, Children IDs: {child_ids_for_parent}"
-                )
                 query = query.filter(Absence.student_id.in_(child_ids_for_parent))
 
                 if student_id is not None and student_id not in child_ids_for_parent:
@@ -196,19 +190,12 @@ class AbsenceService:
                         403,
                     )
             elif current_user_role == "teacher":
-                # Teachers see absences for sessions THEY teach
-                current_app.logger.debug(
-                    f"Scoping absences list for teacher ID: {current_user_id}"
-                )
-                query = query.join(Absence.session).filter(
-                    Session.teacher_id == int(current_user_id)
-                )
-            # Admins see all
+                current_app.logger.debug(f"Scoping absences list for teacher ID: {current_user_id}")
+                query = query.join(Absence.session).filter(Session.teacher_id == int(current_user_id))
 
             # --- Apply Standard Filters ---
             filters_applied = {}
             if student_id is not None:
-                # Parent/Student role already filtered or validated above
                 filters_applied["student_id"] = student_id
                 query = query.filter(Absence.student_id == student_id)
             if session_id is not None:
@@ -218,14 +205,12 @@ class AbsenceService:
                 filters_applied["justified"] = justified
                 query = query.filter(Absence.justified == justified)
 
-            # Date filters (apply to session start_time)
+            # Date filters (apply to calculated absence dates)
             if start_date:
                 try:
                     start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
                     filters_applied["start_date"] = start_date
-                    query = query.join(Absence.session).filter(
-                        Session.start_time >= start_dt
-                    )
+                    # We'll filter the dates after calculating them
                 except ValueError:
                     return err_resp(
                         "Invalid start_date format. Use YYYY-MM-DD.",
@@ -236,12 +221,6 @@ class AbsenceService:
                 try:
                     end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
                     filters_applied["end_date"] = end_date
-                    # Add 1 day to end_dt to make it inclusive of the end date
-                    from datetime import timedelta
-
-                    query = query.join(Absence.session).filter(
-                        Session.start_time < (end_dt + timedelta(days=1))
-                    )
                 except ValueError:
                     return err_resp(
                         "Invalid end_date format. Use YYYY-MM-DD.",
@@ -249,33 +228,40 @@ class AbsenceService:
                         400,
                     )
 
-            if filters_applied:
-                current_app.logger.debug(
-                    f"Applying absence list filters: {filters_applied}"
-                )
-
-            # Add ordering (e.g., by session date descending)
-            query = query.join(Absence.session).order_by(
-                Session.start_time.desc(), Absence.recorded_at.desc()
-            )
+            # Add ordering
+            query = query.order_by(Absence.recorded_at.desc())
 
             # Implement pagination
-            current_app.logger.debug(
-                f"Paginating absences: page={page}, per_page={per_page}"
-            )
-            paginated_absences = query.paginate(
-                page=page, per_page=per_page, error_out=False
-            )
-            current_app.logger.debug(
-                f"Paginated absences items count: {len(paginated_absences.items)}"
-            )
+            paginated_absences = query.paginate(page=page, per_page=per_page, error_out=False)
 
-            # Serialize results using dump_data
+            # Serialize results
             absences_data = dump_data(paginated_absences.items, many=True)
 
-            current_app.logger.debug(f"Serialized {len(absences_data)} absences")
+            # Add names and calculate absence dates
+            for absence_data in absences_data:
+                absence = next((a for a in paginated_absences.items if a.id == absence_data["id"]), None)
+                if absence:
+                    if absence.student:
+                        absence_data["student_name"] = f"{absence.student.first_name} {absence.student.last_name}"
+                    if absence.session and absence.session.module:
+                        absence_data["module_name"] = absence.session.module.name
+                    if absence.session:
+                        absence_data["absence_date"] = AbsenceService._calculate_absence_date(absence.session)
+
+            # Apply date filters after calculating the dates
+            if start_date or end_date:
+                filtered_absences = []
+                for absence_data in absences_data:
+                    if not absence_data.get("absence_date"):
+                        continue
+                    if start_date and absence_data["absence_date"] < start_dt:
+                        continue
+                    if end_date and absence_data["absence_date"] > end_dt:
+                        continue
+                    filtered_absences.append(absence_data)
+                absences_data = filtered_absences
+
             resp = message(True, "Absences list retrieved successfully")
-            # Add pagination metadata
             resp["absences"] = absences_data
             resp["total"] = paginated_absences.total
             resp["pages"] = paginated_absences.pages
@@ -284,15 +270,11 @@ class AbsenceService:
             resp["has_next"] = paginated_absences.has_next
             resp["has_prev"] = paginated_absences.has_prev
 
-            current_app.logger.debug(
-                f"Successfully retrieved absences page {page}. Total: {paginated_absences.total}"
-            )
             return resp, 200
 
         except Exception as error:
             log_msg = f"Error getting absences list (role: {current_user_role})"
-            if page:
-                log_msg += f", page {page}"
+            if page: log_msg += f", page {page}"
             current_app.logger.error(f"{log_msg}: {error}", exc_info=True)
             return internal_err_resp()
 

@@ -1,12 +1,13 @@
 from flask import request, current_app
 from flask_restx import Resource
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 from app.extensions import limiter
 from app.api.decorators import roles_required
 
 from .service import GroupService
 from .dto import GroupDto
+from app.models import User
 
 # Get the API namespace and DTOs
 api = GroupDto.api
@@ -45,11 +46,25 @@ class GroupList(Resource):
         level_id = args.get("level_id")  # Extract the level_id from the parsed arguments
         page = args.get("page")  # Extract the page number for pagination
         per_page = args.get("per_page")  # Extract the number of items per page
-        current_app.logger.debug(f"Received GET request for groups with args: {args}") # Suggestion: Add logging
+        
+        # Get current user's role and ID
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        current_user_role = get_jwt().get("role")
+        
+        current_app.logger.debug(f"Received GET request for groups with args: {args}")
+        
+        # Get teacher_id if current user is a teacher
+        teacher_id = None
+        if current_user and current_user_role == "teacher":
+            teacher_id = current_user.id
+            current_app.logger.debug(f"Current user is a teacher with ID: {teacher_id}")
+            
         return GroupService.get_all_groups(
-            level_id,
-            page,
-            per_page,
+            level_id=level_id,
+            page=page,
+            per_page=per_page,
+            teacher_id=teacher_id
         )
 
     @api.doc(

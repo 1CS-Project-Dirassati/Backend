@@ -1,6 +1,6 @@
 from flask import request, current_app  # Added current_app
-from flask_restx import Resource
-from flask_jwt_extended import jwt_required
+from flask_restx import Resource, fields
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 # Import shared extensions/decorators
 from app.extensions import limiter
@@ -20,6 +20,16 @@ session_filter_parser = (
     SessionDto.session_filter_parser
 )  # Get the filter/pagination parser
 
+# Define time slot response model
+time_slot_pair = api.model('TimeSlotPair', {
+    'teacher_name': fields.String(description='Name of the teacher'),
+    'module_name': fields.String(description='Name of the module')
+})
+
+time_slots_response = api.model('TimeSlotsResponse', {
+    'message': fields.String(description='Response message'),
+    'time_slots': fields.Raw(description='Map of time slots to teacher-module pairs')
+})
 
 # --- Route for listing/creating sessions ---
 @api.route("/")
@@ -29,11 +39,11 @@ class SessionList(Resource):
         "List sessions",
         security="Bearer",
         parser=session_filter_parser,
-        description="Get a paginated list of sessions. Optionally filter by group_id or teacher_id.",  # Updated description
+        description="Get a paginated list of sessions. Optionally filter by group_id or teacher_id.",
         responses={
             200: ("Success", list_data_resp),
             401: "Unauthorized",
-            403: "Forbidden",  # Added 403
+            403: "Forbidden",
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
@@ -42,25 +52,34 @@ class SessionList(Resource):
     @roles_required("admin", "teacher", "student", "parent")
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_SESSION_LIST", "100/minute")
-    )  # Use config
+    )
     def get(self):
         """Get a list of sessions, optionally filtered and paginated"""
         args = session_filter_parser.parse_args()
         group_id_filter = args.get("group_id")
         teacher_id_filter = args.get("teacher_id")
-        semester_id_filter=args.get("semester_id")
+        semester_id_filter = args.get("semester_id")
+        week_filter = args.get("week")
         page = args.get("page")
         per_page = args.get("per_page")
+        
+        # Get current user info
+        current_user_id = get_jwt_identity()
+        current_user_role = get_jwt()["role"]
+        
         current_app.logger.debug(
-            f"Received GET request for sessions with args: {args}"
-        )  # Add logging
+            f"Received GET request for sessions with args: {args} by user {current_user_id} ({current_user_role})"
+        )
 
         return SessionService.get_all_sessions(
             group_id=group_id_filter,
             teacher_id=teacher_id_filter,
             semester_id=semester_id_filter,
-            page=page,  # Pass pagination args
-            per_page=per_page,  # Pass pagination args
+            week=week_filter,
+            page=page,
+            per_page=per_page,
+            current_user_id=current_user_id,
+            current_user_role=current_user_role
         )
 
     @api.doc(
@@ -176,3 +195,28 @@ class SessionResource(Resource):
             f"Received DELETE request for session ID: {session_id}"
         )  # Add logging
         return SessionService.delete_session(session_id)
+
+# --- Route for getting time slot map for a group ---
+@api.route("/group/<int:group_id>/time-slots")
+class GroupTimeSlots(Resource):
+    @api.doc(
+        "Get time slot map for a group",
+        security="Bearer",
+        description="Get a map of time slots with teacher-module pairs for a specific group",
+        responses={
+            200: ("Success", time_slots_response),
+            401: "Unauthorized",
+            403: "Forbidden",
+            404: "Group not found",
+            429: "Too Many Requests",
+            500: "Internal Server Error",
+        },
+    )
+    @jwt_required()
+    @roles_required("admin", "teacher", "student", "parent")
+    @limiter.limit(
+        lambda: current_app.config.get("RATE_LIMIT_SESSION_LIST", "100/minute")
+    )
+    def get(self, group_id):
+        """Get a map of time slots with teacher-module pairs for a specific group"""
+        return SessionService.get_group_time_slots(group_id)

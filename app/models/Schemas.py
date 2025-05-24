@@ -20,6 +20,9 @@ from app.models import (
     TeacherModuleAssociation,
     TeacherGroupAssociation,
 )
+from .TimeSlot import TimeSlot
+from marshmallow import fields
+from .Fee import FeeStatus
 
 
 class AdminSchema(ma.SQLAlchemyAutoSchema):
@@ -46,6 +49,8 @@ class FeeSchema(ma.SQLAlchemyAutoSchema):
         model = Fee
         load_instance = True
         include_fk = True
+
+    status = fields.Enum(FeeStatus, by_value=True)
 
 
 class GroupSchema(ma.SQLAlchemyAutoSchema):
@@ -122,6 +127,9 @@ class TeacherSchema(ma.SQLAlchemyAutoSchema):
         load_instance = True
         include_fk = True
         load_only = ["password"]
+        fields = ("id", "email", "password", "first_name", "last_name", "phone_number", 
+                 "address", "profile_picture", "created_at", "updated_at")
+        dump_only = ("id", "created_at", "updated_at")
 
 
 class TeacherModuleAssociationSchema(ma.SQLAlchemyAutoSchema):
@@ -143,6 +151,9 @@ class SessionSchema(ma.SQLAlchemyAutoSchema):
         model = Session
         load_instance = True
         include_fk = True
+
+    time_slot = fields.Enum(TimeSlot, by_value=True)
+
 class MessageSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Message

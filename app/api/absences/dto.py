@@ -72,8 +72,17 @@ class AbsenceDto:
             "student_id": fields.Integer(
                 required=True, description="ID of the absent student"
             ),
+            "student_name": fields.String(
+                readonly=True, description="Name of the absent student"
+            ),
             "session_id": fields.Integer(
                 required=True, description="ID of the session missed"
+            ),
+            "module_name": fields.String(
+                readonly=True, description="Name of the module for the missed session"
+            ),
+            "absence_date": fields.Date(
+                readonly=True, description="Date of the absence (calculated from session week and time slot)"
             ),
             "justified": fields.Boolean(
                 required=True, description="Indicates if the absence is justified"

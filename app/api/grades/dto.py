@@ -71,17 +71,26 @@ class NoteDto:
             "student_id": fields.Integer(
                 required=True, description="ID of the student receiving the grade"
             ),
+            "student_name": fields.String(
+                readonly=True, description="Name of the student"
+            ),
             "module_id": fields.Integer(
                 required=True, description="ID of the module the grade is for"
+            ),
+            "module_name": fields.String(
+                readonly=True, description="Name of the module"
             ),
             "teacher_id": fields.Integer(
                 required=True,
                 readonly=True,
-                description="ID of the teacher who gave the grade",  # Readonly usually
+                description="ID of the teacher who gave the grade",
+            ),
+            "teacher_name": fields.String(
+                readonly=True, description="Name of the teacher"
             ),
             "value": fields.Float(
                 required=True,
-                description="The numerical value of the grade (e.g., 0-20)",  # Added range example
+                description="The numerical value of the grade (e.g., 0-20)",
             ),
             "type": fields.String(
                 required=True,
@@ -90,15 +99,11 @@ class NoteDto:
             ),
             "comment": fields.String(
                 required=False, description="Optional comment from the teacher"
-            ),  # Optional
+            ),
             "created_at": fields.DateTime(
                 readonly=True,
-                description="Timestamp of grade creation (UTC)",  # Added UTC
+                description="Timestamp of grade creation (UTC)",
             ),
-            # Include related info for context (can be enriched in service if NoteSchema supports it)
-            # "student_name": fields.String(attribute="student.user.name", readonly=True), # Example
-            # "module_name": fields.String(attribute="module.name", readonly=True), # Example
-            # "teacher_name": fields.String(attribute="teacher.user.name", readonly=True), # Example
         },
     )
 

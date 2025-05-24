@@ -83,6 +83,15 @@ class NoteService:
         try:
             # Use dump_data for serialization
             note_data = dump_data(note)
+            
+            # Add names to the response
+            if note.student:
+                note_data["student_name"] = f"{note.student.first_name} {note.student.last_name}"
+            if note.module:
+                note_data["module_name"] = note.module.name
+            if note.teacher:
+                note_data["teacher_name"] = f"{note.teacher.first_name} {note.teacher.last_name}"
+
             resp = message(True, "Note data sent successfully")
             resp["note"] = note_data
             current_app.logger.debug(f"Successfully retrieved note ID {note_id}") # Add logging
@@ -202,6 +211,17 @@ class NoteService:
 
             # Serialize results using dump_data
             notes_data = dump_data(paginated_notes.items, many=True)
+
+            # Add names to each note
+            for note_data in notes_data:
+                note = next((n for n in paginated_notes.items if n.id == note_data["id"]), None)
+                if note:
+                    if note.student:
+                        note_data["student_name"] = f"{note.student.first_name} {note.student.last_name}"
+                    if note.module:
+                        note_data["module_name"] = note.module.name
+                    if note.teacher:
+                        note_data["teacher_name"] = f"{note.teacher.first_name} {note.teacher.last_name}"
 
             current_app.logger.debug(f"Serialized {len(notes_data)} notes")
             resp = message(True, "Notes list retrieved successfully")
