@@ -7,21 +7,16 @@ from app.api.decorators import roles_required
 
 from .service import GroupService
 from .dto import GroupDto
-from app.models import User
+# Removed User import, assuming teacher_id from query param is used directly by service if provided.
 
-# Get the API namespace and DTOs
 api = GroupDto.api
 data_resp = GroupDto.data_resp
 list_data_resp = GroupDto.list_data_resp
-# Add input DTOs if defined
 group_create_dto = GroupDto.group_create
 group_update_dto = GroupDto.group_update
-group_filter_parser = (
-    GroupDto.group_filter_parser  # Use the parser for query parameters
-)
+group_filter_parser = GroupDto.group_filter_parser
 
 
-# Define endpoint for listing all groups and creating new ones
 @api.route("/")
 class GroupList(Resource):
 
@@ -35,67 +30,63 @@ class GroupList(Resource):
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
-        parser=group_filter_parser,  # Add query parameter parser
+        parser=group_filter_parser,
     )
     @jwt_required()
     @roles_required("admin", "teacher", "student", "parent")
     @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_GROUP_LIST", "50/minute"))
     def get(self):
-        """Get a list of all groups"""
+        """Get a list of all groups, optionally filtered by level_id, teacher_id, and module_id."""
         args = group_filter_parser.parse_args()
-        teacher_id = args.get(
-            "teacher_id"
-        )  # Extract the teacher_id from the parsed arguments
-        level_id = args.get(
-            "level_id"
-        )  # Extract the level_id from the parsed arguments
-        page = args.get("page")  # Extract the page number for pagination
-        per_page = args.get("per_page")  # Extract the number of items per page
+        level_id = args.get("level_id")
+        teacher_id_filter = args.get("teacher_id")
+        module_id_filter = args.get("module_id") # Extract module_id
+        page = args.get("page")
+        per_page = args.get("per_page")
 
-        # Get current user's role and ID
         current_user_id = get_jwt_identity()
-        current_user = User.query.get(current_user_id)
         current_user_role = get_jwt().get("role")
 
-        current_app.logger.debug(f"Received GET request for groups with args: {args}")
+        current_app.logger.debug(
+            f"User {current_user_id} ({current_user_role}) GET request for groups with args: {args}"
+        )
 
-        # Get teacher_id if current user is a teacher
-        if current_user and current_user_role == "teacher":
-            teacher_id = current_user.id
-            current_app.logger.debug(f"Current user is a teacher with ID: {teacher_id}")
-
+        # The controller now simply passes all filter arguments.
+        # The service layer will handle the logic of applying them.
+        # If a teacher is logged in, and they want to see groups for their modules,
+        # the client would provide teacher_id (their own) and optionally module_id.
         return GroupService.get_all_groups(
-            level_id=level_id, page=page, per_page=per_page, teacher_id=teacher_id
+            level_id=level_id,
+            teacher_id=teacher_id_filter,
+            module_id=module_id_filter, # Pass module_id to the service
+            page=page,
+            per_page=per_page,
         )
 
     @api.doc(
-        "Create a new group",
+        "Create a new group (Admin only)",
         security="Bearer",
         responses={
             201: ("Created", data_resp),
             400: "Validation Error",
             401: "Unauthorized",
             403: "Forbidden",
+            409: "Conflict (e.g. duplicate group name in level)",
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
     )
     @api.expect(group_create_dto, validate=True)
     @jwt_required()
-    @roles_required("admin", "teacher", "parent")
-    @limiter.limit(
-        lambda: current_app.config.get("RATE_LIMIT_GROUP_CREATE", "10/minute")
-    )
+    @roles_required("admin")
+    @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_GROUP_CREATE", "10/minute"))
     def post(self):
-        """Create a new group"""
+        """Create a new group (Admin only)."""
         data = request.get_json()
-        current_app.logger.debug(
-            f"Received POST request to create group with data: {data}"
-        )  # Suggestion: Add logging
+        current_app.logger.debug(f"Received POST request to create group with data: {data}")
         return GroupService.create_group(data)
 
 
-# Define endpoint for accessing a specific group by ID
 @api.route("/<int:group_id>")
 @api.param("group_id", "The unique identifier of the group")
 class GroupResource(Resource):
@@ -115,17 +106,16 @@ class GroupResource(Resource):
     @jwt_required()
     @roles_required("admin", "teacher", "parent", "student")
     @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_GROUP_GET", "100/minute"))
-    def get(
-        self, group_id: int
-    ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
-        """Get a specific group's data by its ID"""
-        current_app.logger.debug(
-            f"Received GET request for group ID: {group_id}"
-        )  # Suggestion: Add logging
-        return GroupService.get_group_data(group_id)
+    def get(self, group_id: int):
+        """Get a specific group's data by its ID."""
+        current_user_id = get_jwt_identity()
+        current_user_role = get_jwt()["role"]
+        current_app.logger.debug(f"User {current_user_id} ({current_user_role}) GET request for group ID: {group_id}")
+        return GroupService.get_group_data(group_id , current_user_id, current_user_role)
+
 
     @api.doc(
-        "Update a group",
+        "Update a group (Admin only)",
         security="Bearer",
         responses={
             200: ("Success", data_resp),
@@ -133,49 +123,38 @@ class GroupResource(Resource):
             401: "Unauthorized",
             403: "Forbidden",
             404: "Not Found",
+            409: "Conflict (e.g. duplicate group name in level)",
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
     )
     @api.expect(group_update_dto, validate=True)
     @jwt_required()
-    @roles_required("admin", "teacher", "parent")
-    @limiter.limit(
-        lambda: current_app.config.get("RATE_LIMIT_GROUP_UPDATE", "30/minute")
-    )
-    def put(
-        self, group_id: int
-    ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
-        """Update an existing group (full update)"""
+    @roles_required("admin")
+    @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_GROUP_UPDATE", "30/minute"))
+    def put(self, group_id: int):
+        """Update an existing group (Admin only)."""
         data = request.get_json()
-        current_app.logger.debug(
-            f"Received PUT request for group ID {group_id} with data: {data}"
-        )  # Suggestion: Add logging
+        current_app.logger.debug(f"Received PUT request for group ID {group_id} with data: {data}")
         return GroupService.update_group(group_id, data)
 
     @api.doc(
-        "Delete a group",
+        "Delete a group (Admin only)",
         security="Bearer",
         responses={
             204: "No Content - Success",
             401: "Unauthorized",
             403: "Forbidden",
             404: "Not Found",
-            409: "Conflict (e.g., cannot delete if students exist)",
+            409: "Conflict (e.g., cannot delete if students/sessions exist)",
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
     )
     @jwt_required()
-    @roles_required("admin", "teacher", "parent")
-    @limiter.limit(
-        lambda: current_app.config.get("RATE_LIMIT_GROUP_DELETE", "10/minute")
-    )
-    def delete(
-        self, group_id: int
-    ):  # -> Tuple[None, int]: # Suggestion: Add type hints
-        """Delete a group"""
-        current_app.logger.debug(
-            f"Received DELETE request for group ID: {group_id}"
-        )  # Suggestion: Add logging
-        return GroupService.delete_group(group_id)  # Returns (None, 204) on success
+    @roles_required("admin")
+    @limiter.limit(lambda: current_app.config.get("RATE_LIMIT_GROUP_DELETE", "10/minute"))
+    def delete(self, group_id: int):
+        """Delete a group (Admin only)."""
+        current_app.logger.debug(f"Received DELETE request for group ID: {group_id}")
+        return GroupService.delete_group(group_id)

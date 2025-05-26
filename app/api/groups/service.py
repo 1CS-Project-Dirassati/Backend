@@ -1,114 +1,118 @@
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 from marshmallow import ValidationError
+from sqlalchemy.orm import joinedload
 
-# Import your DB instance and Group model
 from app import db
-from app.models import Group, Level  # Import Group and Level models
+# Ensure all necessary models are imported
+from app.models import Group, Level, Session, Teacher, Module, Parent, Student
 
-# Import shared utilities
 from app.utils import (
     err_resp,
     message,
     internal_err_resp,
     validation_error,
 )
-
-# Import serialization/deserialization utilities
 from .utils import dump_data, load_data
 
 
 class GroupService:
     @staticmethod
-    def get_group_data(group_id: int):
-        """Get group data by its ID"""
-        group = Group.query.get(group_id)
+    def get_group_data(group_id: int, current_user_id: int, current_user_role: str):
+        group = Group.query.options(joinedload(Group.level)).get(group_id)
         if not group:
-            current_app.logger.info(
-                f"Group with ID {group_id} not found."
-            )  # Suggestion: Add logging
+            current_app.logger.info(f"Group with ID {group_id} not found.")
             return err_resp("Group not found!", "group_404", 404)
+
+        can_access = False
+        if current_user_role == "admin":
+            can_access = True
+        elif current_user_role == "teacher":
+            if Session.query.filter_by(teacher_id=current_user_id, group_id=group_id).first():
+                can_access = True
+        elif current_user_role == "student":
+            student = Student.query.filter_by(user_id=current_user_id).first()
+            if student and student.group_id == group_id and not student.archived:
+                can_access = True
+        elif current_user_role == "parent":
+            parent = Parent.query.get(current_user_id)
+            if parent:
+                for student_child in parent.students:
+                    if student_child.group_id == group_id and not student_child.archived:
+                        can_access = True
+                        break
+
+        if not can_access:
+            current_app.logger.warning(f"User {current_user_id} ({current_user_role}) forbidden to access group {group_id}")
+            return err_resp("Forbidden: You do not have permission to access this group.", "group_access_denied", 403)
+
         try:
             group_data = dump_data(group)
+            if group.level:
+                group_data["level_name"] = group.level.name
             resp = message(True, "Group data sent successfully")
             resp["group"] = group_data
-            current_app.logger.debug(
-                f"Successfully retrieved group ID {group_id}"
-            )  # Suggestion: Add logging
             return resp, 200
         except Exception as error:
-            current_app.logger.error(
-                f"Error serializing group data for ID {group_id}: {error}",
-                exc_info=True,
-            )
+            current_app.logger.error(f"Error serializing group data for ID {group_id}: {error}", exc_info=True)
             return internal_err_resp()
 
     @staticmethod
     def get_all_groups(
-        level_id=None, page=None, per_page=None, teacher_id=None
+        level_id=None, teacher_id=None, module_id=None,
+        page=None, per_page=None,
+        current_user_id=None, current_user_role=None
     ):
-        """Get a list of all groups, optionally filtered by level_id and paginated."""
         page = page or 1
         per_page = per_page or 10
 
         try:
-            # If teacher_id is provided (from current user), get only their groups
+            # Start with Group query and eagerly load level
+            query = Group.query.options(joinedload(Group.level))
+
+            # Apply join with Session only if teacher_id or module_id is provided
+            if teacher_id is not None or module_id is not None:
+                # Join with Session using the relationship (assumes Group.sessions relationship exists)
+                query = query.join(Group.sessions)
+
+            # Apply teacher_id filter
             if teacher_id is not None:
-                current_app.logger.debug(
-                    f"Getting groups for current teacher (ID: {teacher_id})"
-                )
-                # Get unique groups from teacher's sessions
-                query = Group.query.join(Group.sessions).filter(
-                    Group.sessions.any(teacher_id=teacher_id)
-                ).distinct()
-            else:
-                # For non-teachers, get all groups
-                query = Group.query
+                if current_user_role == "admin" and not Teacher.query.get(teacher_id):
+                    return err_resp(f"Teacher with ID {teacher_id} not found for filtering.", "teacher_filter_404", 404)
+                current_app.logger.debug(f"Filtering groups by teacher_id: {teacher_id}")
+                query = query.filter(Session.teacher_id == teacher_id)
 
-            # Apply the level filter if level_id is provided
+            # Apply module_id filter
+            if module_id is not None:
+                if not Module.query.get(module_id):
+                    return err_resp(f"Module with ID {module_id} not found for filtering.", "module_filter_404", 404)
+                current_app.logger.debug(f"Filtering groups by module_id: {module_id}")
+                query = query.filter(Session.module_id == module_id)
+
+            # Apply level_id filter
             if level_id is not None:
-                current_app.logger.debug(
-                    f"Filtering groups by level_id: {level_id}"
-                )
-                level_exists = (
-                    db.session.query(Level.id).filter_by(id=level_id).scalar()
-                    is not None
-                )
-                if not level_exists:
-                    current_app.logger.info(
-                        f"Attempted to filter groups by non-existent level_id: {level_id}"
-                    )
-                    return err_resp(
-                        "Level specified in filter not found", "level_filter_404", 404
-                    )
-
+                current_app.logger.debug(f"Filtering groups by level_id: {level_id}")
+                if not Level.query.get(level_id):
+                    return err_resp("Level specified in filter not found", "level_filter_404", 404)
                 query = query.filter(Group.level_id == level_id)
 
-            # Add ordering
+            # Apply distinct to avoid duplicate groups when joining with Session
+            if teacher_id is not None or module_id is not None:
+                query = query.distinct()
+
+            # Order and paginate
             query = query.order_by(Group.name)
+            paginated_groups = query.paginate(page=page, per_page=per_page, error_out=False)
 
-            # Implement pagination
-            current_app.logger.debug(
-                f"Paginating groups: page={page}, per_page={per_page}"
-            )
-            paginated_groups = query.paginate(
-                page=page, per_page=per_page, error_out=False
-            )
-            current_app.logger.debug(
-                f"Paginated groups: {paginated_groups.items}"
-            )
+            groups_list_data = []
+            for group_obj in paginated_groups.items:
+                group_item_data = dump_data(group_obj)
+                if group_obj.level:
+                    group_item_data["level_name"] = group_obj.level.name
+                groups_list_data.append(group_item_data)
 
-            # Serialize the results using dump_data
-            groups_data = dump_data(
-                paginated_groups.items, many=True
-            )
-
-            current_app.logger.debug(
-                f"Serialized {len(groups_data)} groups"
-            )
             resp = message(True, "Groups list retrieved successfully")
-            # Add pagination metadata to the response
-            resp["groups"] = groups_data
+            resp["groups"] = groups_list_data
             resp["total"] = paginated_groups.total
             resp["pages"] = paginated_groups.pages
             resp["current_page"] = paginated_groups.page
@@ -116,166 +120,123 @@ class GroupService:
             resp["has_next"] = paginated_groups.has_next
             resp["has_prev"] = paginated_groups.has_prev
 
-            current_app.logger.debug(
-                f"Successfully retrieved groups page {page}. Total: {paginated_groups.total}"
-            )
             return resp, 200
-
-        except Exception as error:
-            log_msg = f"Error getting groups"
+        except SQLAlchemyError as error:
+            log_msg = f"Database error getting groups"
             if level_id is not None:
-                log_msg += f" with level_id filter {level_id}"
+                log_msg += f" with level_id {level_id}"
             if teacher_id is not None:
                 log_msg += f" for teacher {teacher_id}"
+            if module_id is not None:
+                log_msg += f" for module {module_id}"
+            if page is not None:
+                log_msg += f", page {page}"
+            current_app.logger.error(f"{log_msg}: {error}", exc_info=True)
+            return internal_err_resp()
+        except Exception as error:
+            log_msg = f"Unexpected error getting groups"
+            if level_id is not None:
+                log_msg += f" with level_id {level_id}"
+            if teacher_id is not None:
+                log_msg += f" for teacher {teacher_id}"
+            if module_id is not None:
+                log_msg += f" for module {module_id}"
             if page is not None:
                 log_msg += f", page {page}"
             current_app.logger.error(f"{log_msg}: {error}", exc_info=True)
             return internal_err_resp()
 
     @staticmethod
-    def create_group(
-        data: dict,
-    ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
-        """Create a new group after validating input data"""
+    def create_group(data: dict):
         try:
-            # Use load_data utility for validation and deserialization
-            # No partial=True needed for creation
+            if not Level.query.get(data["level_id"]):
+                return validation_error(False, {"level_id": ["Level ID does not exist."]})
 
-            if not Level.query.get(data["level_id"]):  # Check if level_id exists
-                raise ValidationError(
-                    {"level_id": ["Level ID does not exist."]},
-                    field_names=["level_id"],
-                )
+            existing_group = Group.query.filter_by(name=data["name"], level_id=data["level_id"]).first()
+            if existing_group:
+                return err_resp(f"Group with name '{data['name']}' already exists in this level.", "duplicate_group_name_in_level", 409)
 
-            new_group = load_data(data)  # Use util, no instance needed
-
-            # print("this happens 5") # Suggestion: Replace print with logging
-            # current_app.logger.debug(f"Group data validated successfully. Adding to session.") # Suggestion: Add logging
-
+            new_group = load_data(data)
             db.session.add(new_group)
             db.session.commit()
-            # current_app.logger.info(f"Group created successfully with ID: {new_group.id}") # Suggestion: Add logging
 
-            # Use dump_data utility for serialization
-            group_data = dump_data(new_group)
+            group_data_resp = dump_data(new_group)
+            if new_group.level_id:
+                level_obj = Level.query.get(new_group.level_id)
+                if level_obj:
+                    group_data_resp["level_name"] = level_obj.name
+
             resp = message(True, "Group created successfully")
-            resp["group"] = group_data
+            resp["group"] = group_data_resp
             return resp, 201
-
         except ValidationError as err:
-            db.session.rollback()  # Ensure rollback on validation error too
-            current_app.logger.warning(
-                f"Validation error creating group: {err.messages}. Data: {data}"
-            )
+            db.session.rollback()
             return validation_error(False, err.messages), 400
-        except SQLAlchemyError as error:
+        except SQLAlchemyError as e:
             db.session.rollback()
-            current_app.logger.error(
-                f"Database error creating group: {error}", exc_info=True
-            )
-            return internal_err_resp()
-        except Exception as error:
+            current_app.logger.error(f"Database error creating group: {e}", exc_info=True)
+            return internal_err_resp(message=f"Database error: {e}")
+        except Exception as e:
             db.session.rollback()
-            current_app.logger.error(
-                f"Unexpected error creating group: {error}", exc_info=True
-            )
+            current_app.logger.error(f"Unexpected error creating group: {e}", exc_info=True)
             return internal_err_resp()
 
     @staticmethod
-    def update_group(
-        group_id: int, data: dict
-    ):  # -> Tuple[Dict[str, Any], int]: # Suggestion: Add type hints
-        """Update an existing group by ID after validating input data"""
-        group = Group.query.get(group_id)
+    def update_group(group_id: int, data: dict):
+        group = Group.query.options(joinedload(Group.level)).get(group_id)
         if not group:
-            current_app.logger.info(
-                f"Attempted to update non-existent group ID: {group_id}"
-            )  # Suggestion: Add logging
-            return err_resp("Group not found!", "group_404", 404)
-
+            return err_resp("Group not found!", "group_404_update", 404)
         try:
-            # Use load_data utility for validation and deserialization into the existing instance
-            # Pass partial=True and the group instance
-            updated_group = load_data(
-                data, partial=True, instance=group
-            )  # Use util with instance loading
+            if "level_id" in data and data["level_id"] is not None:
+                if not Level.query.get(data["level_id"]):
+                    return validation_error(False, {"level_id": ["New Level ID does not exist."]})
 
-            current_app.logger.debug(
-                f"Group data validated successfully for update. Committing changes for ID: {group_id}"
-            )  # Suggestion: Add logging
+            new_name = data.get("name")
+            target_level_id = data.get("level_id", group.level_id)
+            if new_name and new_name != group.name:
+                existing_group = Group.query.filter(
+                    Group.name == new_name, Group.level_id == target_level_id, Group.id != group_id
+                ).first()
+                if existing_group:
+                    return err_resp(f"Group with name '{new_name}' already exists in the target level.", "duplicate_group_name_update", 409)
 
+            updated_group = load_data(data, partial=True, instance=group)
             db.session.commit()
-            current_app.logger.info(
-                f"Group updated successfully for ID: {group_id}"
-            )  # Suggestion: Add logging
 
-            # Use dump_data utility for serialization
-            group_data = dump_data(updated_group)
+            group_data_resp = dump_data(updated_group)
+            if updated_group.level_id:
+                level_obj = Level.query.get(updated_group.level_id)
+                if level_obj:
+                    group_data_resp["level_name"] = level_obj.name
+
             resp = message(True, "Group updated successfully")
-            resp["group"] = group_data
+            resp["group"] = group_data_resp
             return resp, 200
-
         except ValidationError as err:
             db.session.rollback()
-            current_app.logger.warning(
-                f"Validation error updating group {group_id}: {err.messages}. Data: {data}"
-            )
             return validation_error(False, err.messages), 400
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Database error updating group {group_id}: {error}", exc_info=True
-            )
-            return internal_err_resp()
         except Exception as error:
             db.session.rollback()
-            current_app.logger.error(
-                f"Unexpected error updating group {group_id}: {error}", exc_info=True
-            )
+            current_app.logger.error(f"Error updating group {group_id}: {error}", exc_info=True)
             return internal_err_resp()
 
     @staticmethod
     def delete_group(group_id: int):
-        """Delete a group by ID"""
         group = Group.query.get(group_id)
         if not group:
-            current_app.logger.info(
-                f"Attempted to delete non-existent group ID: {group_id}"
-            )  # Suggestion: Add logging
-            return err_resp("Group not found!", "group_404", 404)
+            return err_resp("Group not found!", "group_404_delete", 404)
         try:
-            current_app.logger.debug(
-                f"Deleting group ID: {group_id}"
-            )  # Suggestion: Add logging
+            if group.students.first() or group.sessions.first():
+                return err_resp("Cannot delete group: It has associated students or sessions.", "delete_group_conflict_dependencies", 409)
+
             db.session.delete(group)
             db.session.commit()
-            current_app.logger.info(
-                f"Group deleted successfully: ID {group_id}"
-            )  # Suggestion: Add logging
             return None, 204
-        except SQLAlchemyError as error:
+        except SQLAlchemyError as e:
             db.session.rollback()
-            # Check for specific constraint violation if possible/needed
-            if "FOREIGN KEY constraint failed" in str(error):
-                current_app.logger.warning(
-                    f"Attempted to delete group {group_id} with existing dependencies: {error}"
-                )
-                return err_resp(
-                    "Cannot delete group. It may have associated students or other dependencies.",
-                    "delete_conflict",
-                    409,
-                )
-            current_app.logger.error(
-                f"Database error deleting group {group_id}: {error}", exc_info=True
-            )
-            return err_resp(
-                f"Could not delete group due to a database error.",  # Simplified message
-                "delete_error_db",
-                409,
-            )
-        except Exception as error:
+            current_app.logger.error(f"Database error deleting group {group_id}: {e}", exc_info=True)
+            return err_resp("Could not delete group due to a database error or existing dependencies.", "delete_group_db_error", 500)
+        except Exception as e:
             db.session.rollback()
-            current_app.logger.error(
-                f"Unexpected error deleting group {group_id}: {error}", exc_info=True
-            )
+            current_app.logger.error(f"Unexpected error deleting group {group_id}: {e}", exc_info=True)
             return internal_err_resp()

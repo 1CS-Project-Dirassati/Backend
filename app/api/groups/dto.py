@@ -15,12 +15,19 @@ class GroupDto:
         required=False,
         help="Filter groups by the ID of the level they belong to.",
     )
-    group_filter_parser.add_argument(  # ADDED teacher_id filter
+    group_filter_parser.add_argument(
         "teacher_id",
         type=int,
         location="args",
         required=False,
         help="Filter groups by the ID of a teacher associated with the group through sessions.",
+    )
+    group_filter_parser.add_argument(  # ADDED module_id filter
+        "module_id",
+        type=int,
+        location="args",
+        required=False,
+        help="Filter groups by the ID of a module associated with the group through sessions.",
     )
     group_filter_parser.add_argument(
         "page",
@@ -51,8 +58,9 @@ class GroupDto:
             "level_id": fields.Integer(
                 required=True, description="ID of the level this group belongs to"
             ),
-            # You might also want to include 'level_name' here if you enrich it in the service
-            # "level_name": fields.String(readonly=True, description="Name of the level"),
+            "level_name": fields.String(
+                readonly=True, description="Name of the level this group belongs to"
+            ),
         },
     )
 

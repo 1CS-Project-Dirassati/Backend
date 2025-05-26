@@ -16,11 +16,14 @@ from . import User
 
 from app import db  # Assuming db is your SQLAlchemy instance
 
+
 class NotificationType(Enum):
     SYSTEM = "system"
     PAYMENT = "payment"
-    ATTENDANCE = "attendance"
+    ABSENCE = "absence"
+    GRADE = "grade"
     MESSAGE = "message"
+
 
 class Notification(db.Model):
     """Stores individual notifications for users."""
@@ -54,7 +57,7 @@ class Notification(db.Model):
     # sender_type = Column(String(50), nullable=True)
     # sender_id = Column(Integer, nullable=True)
 
-    recipient: Mapped[User] = relationship("User" , back_populates="notifications")
+    recipient: Mapped[User] = relationship("User", back_populates="notifications")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), onupdate=func.now()
