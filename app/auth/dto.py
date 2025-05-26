@@ -15,7 +15,10 @@ class AuthDto:
             "name": fields.String,  # Consider combining first/last or adjusting model
             "username": fields.String,
             "joined_date": fields.DateTime,
-            "role_id": fields.Integer,  # Or maybe role name 'role': fields.String
+            "role": fields.String(
+                enum=["parent", "teacher", "admin", "student"],
+                description="Role of the user",
+                ),  # Or maybe role name 'role': fields.String
             # Add other relevant non-sensitive user fields if needed
         },
     )
@@ -28,11 +31,11 @@ class AuthDto:
     auth_login = api.model(
         "Login data",
         {
-            "email": fields.String(required=True, example="gulag@maserati.com"),
-            "password": fields.String(required=True, example="supersecretpassword"),
+            "email": fields.String(required=True, example="admin1@example.com"),
+            "password": fields.String(required=True, example="password123"),
             "role": fields.String(
                 required=True,
-                enum=["parent", "teacher", "admin", "student"],
+                enum=["admin", "teacher", "parent", "student"],
                 description="Role of the user",
             ),
         },

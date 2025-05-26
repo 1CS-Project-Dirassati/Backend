@@ -109,6 +109,13 @@ class SemesterService:
                 return err_resp(
                     f"Level with ID {data['level_id']} not found.", "level_404", 404
                 )
+            semester = Semester.query.filter_by(name=data["name"]).first()
+            if semester:
+                return err_resp(
+                    f"Semester with name '{data['name']}' already exists.",
+                    "semester_exists",
+                    400,
+                )
 
             # Create instance
             new_semester = load_data(data)

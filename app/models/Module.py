@@ -19,7 +19,7 @@ class Module(Model):
     )
     level = relationship("Level", back_populates="modules")
     semester = relationship("Semester", back_populates="modules")
-    sessions = relationship("Session", back_populates="module")
+    sessions = relationship("Session", back_populates="module", cascade="all, delete-orphan")
     cours = relationship("Cours", back_populates="module", cascade="all, delete-orphan")
     notes = relationship("Note", back_populates="module", cascade="all, delete-orphan")
 

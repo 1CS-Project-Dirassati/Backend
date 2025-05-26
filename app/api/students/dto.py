@@ -33,10 +33,10 @@ class StudentDto:
     )
     student_filter_parser.add_argument(
         "is_approved",
-        type=bool,
+        type=int,
         location="args",
         required=False,
-        help="Filter students by their approval status (true/false).",
+        help="Filter students by their approval status (1(true)/0(false)).",
     )
     student_filter_parser.add_argument(
         "page",

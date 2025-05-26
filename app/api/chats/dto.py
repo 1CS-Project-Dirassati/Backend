@@ -47,14 +47,14 @@ class ChatDto:
             "teacher_id": fields.Integer(
                 required=True, description="ID of the teacher participant"
             ),
+            "parent_name": fields.String(
+                description="Full name of the parent participant"
+            ),
+            "teacher_name": fields.String(
+                description="Full name of the teacher participant"
+            ),
             "created_at": fields.DateTime(
                 readonly=True, description="Timestamp when the chat was created (UTC)"
-            ),
-            "teacher_id": fields.Integer(
-                required=True, description="ID of the current user (participant1)"
-            ),
-            "parent_id": fields.Integer(
-                required=True, description="ID of the other participant (participant2)"
             ),
         },
     )

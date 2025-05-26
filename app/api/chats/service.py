@@ -73,6 +73,12 @@ class ChatService:
                 chat_data["parent_id"] = int(current_user_id)
                 chat_data["teacher_id"] = chat.parent_id if current_user_role == "teacher" else chat.teacher_id
 
+            # Add participant names
+            if chat.parent:
+                chat_data["parent_name"] = f"{chat.parent.first_name} {chat.parent.last_name}"
+            if chat.teacher:
+                chat_data["teacher_name"] = f"{chat.teacher.first_name} {chat.teacher.last_name}"
+
             resp = message(True, "Chat data sent successfully")
             resp["chat"] = chat_data
             current_app.logger.debug(f"Successfully retrieved chat ID {chat_id}")
@@ -146,7 +152,7 @@ class ChatService:
             # Serialize results using dump_data
             chats_data = dump_data(paginated_chats.items, many=True)
             
-            # Add other participant's last name to each chat
+            # Add participant names to each chat
             for chat in chats_data:
                 # Get the actual chat object to access relationships
                 chat_obj = Chat.query.get(chat['id'])
@@ -163,6 +169,11 @@ class ChatService:
                         chat['teacher_id'] = chat_obj.teacher_id
                         if chat_obj.teacher:
                             chat['other_participant_name'] = chat_obj.teacher.last_name
+                    
+                    if chat_obj.parent:
+                        chat['parent_name'] = f"{chat_obj.parent.first_name} {chat_obj.parent.last_name}"
+                    if chat_obj.teacher:
+                        chat['teacher_name'] = f"{chat_obj.teacher.first_name} {chat_obj.teacher.last_name}"
 
             current_app.logger.debug(f"Serialized {len(chats_data)} chats")
             resp = message(True, "Chats list retrieved successfully")
