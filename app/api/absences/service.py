@@ -48,7 +48,7 @@ class AbsenceService:
         base_date = semester_start + timedelta(weeks=weeks_to_add)
         absence_date = base_date + timedelta(days=day_offset)
 
-        return absence_date
+        return absence_date.strftime("%Y-%m-%d")  # Return formatted date string
 
     # --- Helper for Foreign Key Validation ---
     @staticmethod
@@ -112,13 +112,14 @@ class AbsenceService:
 
         try:
             absence_data = dump_data(absence)
-            
+
             # Add names and calculate absence date
             if absence.student:
                 absence_data["student_name"] = f"{absence.student.first_name} {absence.student.last_name}"
             if absence.session and absence.session.module:
                 absence_data["module_name"] = absence.session.module.name
             if absence.session:
+                print (AbsenceService._calculate_absence_date(absence.session))
                 absence_data["absence_date"] = AbsenceService._calculate_absence_date(absence.session)
 
             resp = message(True, "Absence record data sent successfully")
@@ -229,7 +230,7 @@ class AbsenceService:
                     )
 
             # Add ordering
-            query = query.order_by(Absence.recorded_at.desc())
+            query = query.order_by(Absence.created_at.desc())
 
             # Implement pagination
             paginated_absences = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -309,7 +310,7 @@ class AbsenceService:
             # 3. Validate Student Group
             if not student:
                 return err_resp("Student not found.", "student_404", 404)
-            
+
             if not session:
                 return err_resp("Session not found.", "session_404", 404)
 

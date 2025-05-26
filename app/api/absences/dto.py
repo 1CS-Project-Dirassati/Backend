@@ -81,7 +81,7 @@ class AbsenceDto:
             "module_name": fields.String(
                 readonly=True, description="Name of the module for the missed session"
             ),
-            "absence_date": fields.Date(
+            "absence_date": fields.String(
                 readonly=True, description="Date of the absence (calculated from session week and time slot)"
             ),
             "justified": fields.Boolean(

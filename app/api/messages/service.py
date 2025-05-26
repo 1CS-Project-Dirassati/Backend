@@ -214,6 +214,7 @@ class MessageService:
             current_app.logger.debug(f"Serialized {len(messages_data)} messages")
             resp = message_response(True, "Messages list retrieved successfully")
             # Add pagination metadata
+            print(messages_data)
             resp["messages"] = messages_data
             resp["total"] = paginated_messages.total
             resp["pages"] = paginated_messages.pages

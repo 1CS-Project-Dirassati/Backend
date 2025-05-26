@@ -17,7 +17,8 @@ class Absence(Model):
     )
     justified = Column(db.Boolean, default=False, nullable=False)
     reason = Column(db.String(255), nullable=True)
-    recorded_at = Column(
+
+    created_at = Column(
         db.DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
@@ -33,6 +34,3 @@ class Absence(Model):
 
     def __repr__(self):
         return f"<Absence id={self.id} student_id={self.student_id} session_id={self.session_id}>"
-
-
-

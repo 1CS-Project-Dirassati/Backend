@@ -41,6 +41,7 @@ class AbsenceSchema(ma.SQLAlchemyAutoSchema):
         model = Absence
         load_instance = True
         include_fk = True
+        dump_only = "id"
 
 
 class ChatSchema(ma.SQLAlchemyAutoSchema):
