@@ -1,5 +1,7 @@
 from app import ma
 from app.models import (
+    NoteType,
+    NotificationType,
     Admin,
     Absence,
     Chat,
@@ -29,19 +31,23 @@ class AdminSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Admin
         load_instance = True
+        include_fk = True
+        load_only = ["password"]
+        dump_only = ["id", "created_at", "updated_at", "user_type"]
 
 
 class AbsenceSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Absence
         load_instance = True
-        include_fk=True
+        include_fk = True
 
 
 class ChatSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Chat
         load_instance = True
+        include_fk = True
 
 
 class FeeSchema(ma.SQLAlchemyAutoSchema):
@@ -64,6 +70,7 @@ class LessonSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Lesson
         load_instance = True
+        include_fk = True
 
 
 class LevelSchema(ma.SQLAlchemyAutoSchema):
@@ -76,21 +83,25 @@ class ModuleSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Module
         load_instance = True
-        include_fk=True
+        include_fk = True
 
 
 class NoteSchema(ma.SQLAlchemyAutoSchema):
+    type = fields.Enum(NoteType, by_value=False)
+
     class Meta:
         model = Note
         load_instance = True
-        include_fk=True
-
+        include_fk = True
 
 
 class NotificationSchema(ma.SQLAlchemyAutoSchema):
+    notification_type = fields.Enum(NotificationType, by_value=False)
+
     class Meta:
         model = Notification
         load_instance = True
+        include_fk = True
 
 
 class ParentSchema(ma.SQLAlchemyAutoSchema):
@@ -98,6 +109,7 @@ class ParentSchema(ma.SQLAlchemyAutoSchema):
         model = Parent
         load_instance = True
         load_only = ["password"]
+        dump_only = ["id", "created_at", "updated_at", "user_type"]
 
 
 class SalleSchema(ma.SQLAlchemyAutoSchema):
@@ -117,9 +129,10 @@ class StudentSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Student
         load_instance = True
-        include_fk=True
+        include_fk = True
         load_only = ["password"]
-        dump_only = ["id", ]
+        dump_only = ["id", "created_at", "updated_at", "user_type"]
+
 
 class TeacherSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
@@ -127,23 +140,21 @@ class TeacherSchema(ma.SQLAlchemyAutoSchema):
         load_instance = True
         include_fk = True
         load_only = ["password"]
-        fields = ("id", "email", "password", "first_name", "last_name", "phone_number", 
-                 "address", "profile_picture", "created_at", "updated_at")
-        dump_only = ("id", "created_at", "updated_at")
+        dump_only = ["id", "created_at", "updated_at", "user_type"]
 
 
 class TeacherModuleAssociationSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = TeacherModuleAssociation
         load_instance = True
+        include_fk = True
 
 
 class TeacherGroupAssociationSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = TeacherGroupAssociation
         load_instance = True
-
-
+        include_fk = True
 
 
 class SessionSchema(ma.SQLAlchemyAutoSchema):
@@ -154,11 +165,11 @@ class SessionSchema(ma.SQLAlchemyAutoSchema):
 
     time_slot = fields.Enum(TimeSlot, by_value=True)
 
+
 class MessageSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Message
         load_instance = True
         include_fk = True
-        fields = ('id', 'chat_id', 'sender_id', 'sender_role', 'content', 'created_at')
-        dump_only = ('id', 'sender_id', 'sender_role', 'created_at')
-        load_only = ('chat_id', 'content')
+        dump_only = ("id", "created_at")
+        load_only = ("chat_id", "content")

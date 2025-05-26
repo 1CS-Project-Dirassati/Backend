@@ -7,6 +7,7 @@ relationship = db.relationship
 # Importing all models for easier access
 from .User import User
 from .Admin import Admin
+
 from .Absence import Absence
 from .Chat import Chat
 from .Fee import Fee
@@ -20,10 +21,12 @@ from .Lesson import Cours as Lesson
 from .Message import Message
 from .Module import Module
 from .Note import Note
+from .Note import NoteType
 from .Notification import Notification
 from .Notification import NotificationType
 from .Salle import Salle
 from .Semester import Semester
+from .TimeSlot import TimeSlot
 from .associations import (
     TeacherModuleAssociation,
     TeacherGroupAssociation,
@@ -40,6 +43,7 @@ from .Schemas import (
     FeeSchema,
     GroupSchema,
     LessonSchema,
+    LevelSchema,
     ModuleSchema,
     MessageSchema,
     NoteSchema,
@@ -56,6 +60,7 @@ from .Schemas import (
 
 __all__ = [
     "User",
+    "LevelSchema",
     "NotificationType",
     "Admin",
     "Absence",
@@ -67,6 +72,7 @@ __all__ = [
     "Session",
     "Student",
     "Teacher",
+    "TimeSlot",
     "Lesson",
     "Message",
     "Module",
@@ -95,4 +101,5 @@ __all__ = [
     "TeacherModuleAssociationSchema",
     "TeacherGroupAssociationSchema",
     "FeeStatus",
+    "NoteType",
 ]
