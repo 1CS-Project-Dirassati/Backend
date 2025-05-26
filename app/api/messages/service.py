@@ -144,7 +144,6 @@ class MessageService:
             if sender_id is not None:
                 filters_applied["sender_id"] = sender_id
                 query = query.filter(Message.sender_id == sender_id)
-
             # Date filters
             try:
                 if start_date:
@@ -195,19 +194,19 @@ class MessageService:
 
             # 6. Serialize results using dump_data
             messages_data = dump_data(paginated_messages.items, many=True)
-            
+
             # Add 'me' field to each message based on current user
             for message in messages_data:
                 # Ensure content is present
-                if 'content' not in message:
-                    message_obj = Message.query.get(message['id'])
+                if "content" not in message:
+                    message_obj = Message.query.get(message["id"])
                     if message_obj:
-                        message['content'] = message_obj.content
-                
+                        message["content"] = message_obj.content
+
                 # Set me field based on current user
-                message['me'] = (
-                    int(message['sender_id']) == int(current_user_id) and 
-                    message['sender_role'] == current_user_role
+                message["me"] = (
+                    int(message["sender_id"]) == int(current_user_id)
+                    and message["sender_role"] == current_user_role
                 )
                 # Keep sender_role in response for reference
                 # del message['sender_role']
@@ -246,7 +245,7 @@ class MessageService:
             # Create schema instance for validation
             message_schema = MessageSchema()
             validated_data = message_schema.load(data)
-            
+
             # Extract data from validated instance
             chat_id = validated_data.chat_id
             content = validated_data.content
@@ -279,7 +278,7 @@ class MessageService:
                 chat_id=chat_id,
                 content=content,
                 sender_id=current_user_id,
-                sender_role=current_user_role
+                sender_role=current_user_role,
             )
             db.session.add(new_message)
             db.session.commit()

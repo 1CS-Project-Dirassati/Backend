@@ -2,15 +2,12 @@ from flask import request, current_app
 from flask_restx import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
-# Import shared extensions/decorators
 from app.extensions import limiter
 from app.api.decorators import roles_required
 
-# Import semester-specific modules
 from .service import SemesterService
 from .dto import SemesterDto
 
-# Get the API namespace and DTOs
 api = SemesterDto.api
 data_resp = SemesterDto.data_resp
 list_data_resp = SemesterDto.list_data_resp
@@ -19,18 +16,16 @@ semester_update_input = SemesterDto.semester_update_input
 semester_filter_parser = SemesterDto.semester_filter_parser
 
 
-# --- Helper to get current user info ---
 def get_current_user_info():
     user_id = get_jwt_identity()
     claims = get_jwt()
     role = claims.get("role")
     current_app.logger.debug(
         f"Current user info: ID={user_id}, Role={role}"
-    )  # Log user info
+    )
     return user_id, role
 
 
-# --- Route for listing/creating semesters ---
 @api.route("/")
 class SemesterList(Resource):
 
@@ -38,7 +33,7 @@ class SemesterList(Resource):
         "List semesters",
         security="Bearer",
         parser=semester_filter_parser,
-        description="Get a list of semesters. Filterable by level_id and date range.",
+        description="Get a list of semesters. Filterable by level_id, semester_index, and date range.", # Updated description
         responses={
             200: ("Success", list_data_resp),
             401: "Unauthorized",
@@ -48,7 +43,7 @@ class SemesterList(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin", "teacher")  # Example roles allowed
+    @roles_required("admin", "teacher", "parent", "student") # Expanded roles for viewing semesters
     @limiter.limit("60/minute")
     def get(self):
         """Get a list of semesters, filtered by query params"""
@@ -59,8 +54,11 @@ class SemesterList(Resource):
         )
         return SemesterService.get_all_semesters(
             level_id=args.get("level_id"),
+            semester_index=args.get("semester_index"), # ADDED semester_index
             start_date=args.get("start_date"),
             end_date=args.get("end_date"),
+            page=args.get("page"), # Added page
+            per_page=args.get("per_page"), # Added per_page
             current_user_id=user_id,
             current_user_role=role,
         )
@@ -68,7 +66,7 @@ class SemesterList(Resource):
     @api.doc(
         "Create a new semester",
         security="Bearer",
-        description="Create a new academic semester (Admin only).",
+        description="Create a new academic semester. Requires 'semester_index'. (Admin only).", # Updated description
         responses={
             201: ("Created", data_resp),
             400: "Validation Error/Invalid Data",
@@ -80,19 +78,19 @@ class SemesterList(Resource):
     )
     @api.expect(semester_create_input, validate=True)
     @jwt_required()
-    @roles_required("admin")  # Only admins can create
+    @roles_required("admin")
     @limiter.limit("30/minute")
     def post(self):
         """Create a new semester"""
-        user_id, role = get_current_user_info()
+        user_id, role = get_current_user_info() # Though role isn't strictly used in service for create logic beyond decorator
         data = request.get_json()
         current_app.logger.debug(
             f"Received POST request to create semester with data: {data}"
         )
+        # user_id and role are passed for consistency, though service might not use them if decorator handles all auth
         return SemesterService.create_semester(data, user_id, role)
 
 
-# --- Route for specific semester operations ---
 @api.route("/<int:semester_id>")
 @api.param("semester_id", "The unique identifier of the semester")
 class SemesterResource(Resource):
@@ -111,9 +109,9 @@ class SemesterResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin", "teacher")  # Example roles allowed
+    @roles_required("admin", "teacher", "parent", "student") # Expanded roles
     @limiter.limit("100/minute")
-    def get(self, semester_id):
+    def get(self, semester_id: int): # Added type hint
         """Get a specific semester's data by ID"""
         user_id, role = get_current_user_info()
         current_app.logger.debug(f"Received GET request for semester ID: {semester_id}")
@@ -122,7 +120,7 @@ class SemesterResource(Resource):
     @api.doc(
         "Update a semester",
         security="Bearer",
-        description="Update details of a semester (Admin only).",
+        description="Update details of a semester, including 'semester_index'. (Admin only).", # Updated description
         responses={
             200: ("Success", data_resp),
             400: "Validation Error/Invalid Data",
@@ -135,11 +133,11 @@ class SemesterResource(Resource):
     )
     @api.expect(semester_update_input, validate=True)
     @jwt_required()
-    @roles_required("admin")  # Only admins can update
+    @roles_required("admin")
     @limiter.limit("40/minute")
-    def patch(self, semester_id):
+    def patch(self, semester_id: int): # Added type hint
         """Update details of a semester"""
-        user_id, role = get_current_user_info()
+        user_id, role = get_current_user_info() # For consistency
         data = request.get_json()
         current_app.logger.debug(
             f"Received PATCH request for semester ID {semester_id} with data: {data}"
@@ -160,11 +158,11 @@ class SemesterResource(Resource):
         },
     )
     @jwt_required()
-    @roles_required("admin")  # Only admins can delete
+    @roles_required("admin")
     @limiter.limit("20/minute")
-    def delete(self, semester_id):
+    def delete(self, semester_id: int): # Added type hint
         """Delete a semester"""
-        user_id, role = get_current_user_info()
+        user_id, role = get_current_user_info() # For consistency
         current_app.logger.debug(
             f"Received DELETE request for semester ID: {semester_id}"
         )

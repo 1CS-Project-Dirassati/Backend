@@ -12,6 +12,7 @@ class Semester(Model):
     name = Column(db.String(50), nullable=False)
     level_id = Column(db.Integer, db.ForeignKey("level.id"), nullable=False, index=True)
     start_date = Column(db.Date, nullable=False)
+    semester_index = Column(db.Integer, nullable=False, index=True)
     duration = Column(db.Integer, nullable=False)
     created_at = Column(
         db.DateTime(timezone=True),
@@ -26,7 +27,9 @@ class Semester(Model):
     )
 
     level = relationship("Level", back_populates="semesters")
-    modules = relationship("Module", back_populates="semester", cascade="all, delete-orphan")
+    modules = relationship(
+        "Module", back_populates="semester", cascade="all, delete-orphan"
+    )
     sessions = relationship("Session", back_populates="semester")
 
     def __repr__(self):

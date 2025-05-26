@@ -5,10 +5,8 @@ from flask_restx.reqparse import RequestParser
 class SemesterDto:
     """Data Transfer Objects and Request Parsers for the Semester API."""
 
-    # Define the namespace
     api = Namespace("semesters", description="Academic semester related operations.")
 
-    # --- Parser for Query Parameters (Filters and Pagination) ---
     semester_filter_parser = RequestParser(bundle_errors=True)
     semester_filter_parser.add_argument(
         "level_id",
@@ -16,6 +14,13 @@ class SemesterDto:
         location="args",
         required=False,
         help="Filter semesters by the ID of the academic level.",
+    )
+    semester_filter_parser.add_argument(  # ADDED semester_index filter
+        "semester_index",
+        type=int,
+        location="args",
+        required=False,
+        help="Filter semesters by their index within a level (e.g., 1 for first semester, 2 for second).",
     )
     semester_filter_parser.add_argument(
         "start_date",
@@ -48,7 +53,6 @@ class SemesterDto:
         help="Number of items per page (default: 10).",
     )
 
-    # Define the core 'semester' object model
     semester = api.model(
         "Semester Object",
         {
@@ -58,6 +62,10 @@ class SemesterDto:
             "name": fields.String(required=True, description="Name of the semester"),
             "level_id": fields.Integer(
                 required=True, description="ID of the associated academic level"
+            ),
+            "semester_index": fields.Integer(  # ADDED semester_index field
+                required=True,
+                description="The index of the semester within its level (e.g., 1, 2)",
             ),
             "start_date": fields.Date(
                 required=True, description="Start date of the semester (YYYY-MM-DD)"
@@ -74,7 +82,6 @@ class SemesterDto:
         },
     )
 
-    # Standard response for a single semester
     data_resp = api.model(
         "Semester Data Response",
         {
@@ -84,7 +91,6 @@ class SemesterDto:
         },
     )
 
-    # Standard response for a list of semesters (includes pagination)
     list_data_resp = api.model(
         "Semester List Response",
         {
@@ -104,7 +110,6 @@ class SemesterDto:
         },
     )
 
-    # --- DTOs for POST/PATCH ---
     semester_create_input = api.model(
         "Semester Create Input",
         {
@@ -112,11 +117,15 @@ class SemesterDto:
             "level_id": fields.Integer(
                 required=True, description="ID of the associated academic level"
             ),
+            "semester_index": fields.Integer(  # ADDED semester_index (required)
+                required=True,
+                description="The index of the semester within its level (e.g., 1 for first, 2 for second)",
+            ),
             "start_date": fields.Date(
                 required=True, description="Start date of the semester (YYYY-MM-DD)"
             ),
             "duration": fields.Integer(
-                required=True, description="Duration of the semester in weeks"
+                required=True, description="Duration of the semester in weeks (e.g. 16)"
             ),
         },
     )
@@ -127,6 +136,10 @@ class SemesterDto:
             "name": fields.String(
                 required=False, description="Updated name of the semester"
             ),
+            "semester_index": fields.Integer(  # ADDED semester_index (optional for update)
+                required=False,
+                description="Updated index of the semester within its level",
+            ),
             "start_date": fields.Date(
                 required=False,
                 description="Updated start date of the semester (YYYY-MM-DD)",
@@ -134,5 +147,6 @@ class SemesterDto:
             "duration": fields.Integer(
                 required=False, description="Updated duration of the semester in weeks"
             ),
+            # level_id is typically not updated for an existing semester.
         },
     )

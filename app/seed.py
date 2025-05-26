@@ -190,12 +190,14 @@ def add_dummy_data():
             "level_id": level_inst.id,
             "start_date": start_date_fall_obj.isoformat(),
             "duration": 16,
+            "semester_index": 1,
         }
         semester_data_spring = {
             "name": f"{level_inst.name} - Spring {current_year+1}",
             "level_id": level_inst.id,
             "start_date": start_date_spring_obj.isoformat(),
             "duration": 16,
+            "semester_index": 2,
         }
         semesters_instances.append(semester_schema.load(semester_data_fall))
         semesters_instances.append(semester_schema.load(semester_data_spring))
@@ -378,6 +380,7 @@ def add_dummy_data():
                             "salle_id": random.choice(salles_instances).id,
                             "time_slot": time_slot_member.value,
                             "weeks": semester_obj.duration,
+                            "semester_index": semester_obj.semester_index,
                         }
                         sessions_instances.append(session_schema.load(session_data))
         if sessions_instances:
