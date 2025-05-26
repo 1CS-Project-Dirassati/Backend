@@ -95,8 +95,9 @@ class ChatList(Resource):
     )
     def post(self):
         """Create a new chat or retrieve existing one"""
-        user_id, role = get_current_user_info()  # Get user info for service logic
         data = request.get_json()
+        user_id = get_jwt_identity()  # Get the current user's ID from JWT
+        role = get_jwt()["role"]  # Get the user's role from JWT claims
         current_app.logger.debug(
             f"Received POST request to create chat with data: {data}"
         )
@@ -129,7 +130,8 @@ class ChatResource(Resource):
     # Add type hint
     def get(self, chat_id: int):
         """Get a specific chat's metadata by ID (with record-level access control)"""
-        user_id, role = get_current_user_info()
+        user_id = get_jwt_identity()  # Get the current user's ID from JWT
+        role = get_jwt()["role"]  # Get the user's role from JWT claims
         current_app.logger.debug(f"Received GET request for chat ID: {chat_id}")
         # Pass user info for record-level check
         return ChatService.get_chat_data(chat_id, user_id, role)
@@ -156,7 +158,8 @@ class ChatResource(Resource):
     # Add type hint
     def delete(self, chat_id: int):
         """Delete a chat conversation"""
-        user_id, role = get_current_user_info()
+        user_id = get_jwt_identity()
+        role = get_jwt()["role"]
         current_app.logger.debug(f"Received DELETE request for chat ID: {chat_id}")
         # Service layer handles authorization
         return ChatService.delete_chat(chat_id, user_id, role)
