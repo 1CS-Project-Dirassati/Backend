@@ -1,492 +1,262 @@
-# Added current_app
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from marshmallow import ValidationError
 from werkzeug.security import generate_password_hash
 
-# Import DB instance and models
 from app import db
+from app.models import Teacher, Session, Module, TeacherModuleAssociation # Removed Specialization
 
-# Import related models needed for dependency checks
-from app.models import Teacher, Session, Module, TeacherModuleAssociation
-
-# Import shared utilities
-from app.utils import (
-    err_resp,
-    message,
-    internal_err_resp,
-    validation_error,
-)
-
-# Import serialization/deserialization utilities from local utils.py
+from app.models.Schemas import TeacherModuleAssociationSchema
+from app.utils import err_resp, message, internal_err_resp, validation_error
 from .utils import dump_data, load_data
 
 
 class TeacherService:
 
-    # --- GET Single ---
     @staticmethod
-    # Add type hints
+    def _validate_foreign_keys(data, instance=None): # Removed specialization_id check
+        errors = {}
+        # Add other FK validations if Teacher model gets more relations
+        return errors
+
+    @staticmethod
+    def _can_user_access_teacher_record(teacher: Teacher, current_user_id: int, current_user_role: str, allow_archived_view_for_admin=False) -> bool:
+        if not teacher: return False
+
+        if teacher.archived:
+            if current_user_role == "admin" and allow_archived_view_for_admin:
+                return True
+            if current_user_role == "teacher" and teacher.id == int(current_user_id):
+                return True
+            current_app.logger.debug(f"Access denied to archived teacher {teacher.id} for user {current_user_id} ({current_user_role}).")
+            return False
+
+        if current_user_role == "admin": return True
+        if current_user_role == "teacher": return True
+        if current_user_role == "parent": return True
+
+        current_app.logger.warning(f"User {current_user_id} ({current_user_role}) denied access to teacher {teacher.id}.")
+        return False
+
+    @staticmethod
     def get_teacher_data(teacher_id: int, current_user_id: int, current_user_role: str):
-        """Get teacher data by ID, with record-level authorization check"""
         teacher = Teacher.query.get(teacher_id)
+        allow_archived_view = current_user_role == "admin" or \
+                              (current_user_role == "teacher" and int(current_user_id) == teacher_id)
+
         if not teacher:
-            current_app.logger.info(
-                f"Teacher with ID {teacher_id} not found."
-            )  # Add logging
             return err_resp("Teacher not found!", "teacher_404", 404)
 
-        # --- Record-Level Authorization Check ---
-        # Admins can see any teacher, teachers can see themselves
-        print(int(current_user_id))
-        print(int(teacher.id))
-       
-        if current_user_role != "admin" and int(current_user_id) != int(teacher.id):
-            current_app.logger.warning(
-                f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to access teacher record {teacher_id}."
-            )  # Add logging
-            return err_resp(
-                "Forbidden: You do not have permission to access this teacher's data.",
-                "record_access_denied",
-                403,
-            )
-        current_app.logger.debug(
-            f"Record access granted for user {current_user_id} to teacher {teacher_id}."
-        )  # Add logging
+        if not TeacherService._can_user_access_teacher_record(teacher, current_user_id, current_user_role, allow_archived_view_for_admin=allow_archived_view):
+            return err_resp("Forbidden or Teacher not found.", "access_denied_or_not_found", 403 if teacher.archived else 404)
 
         try:
-            # Use dump_data for serialization (excludes password via schema)
             teacher_data = dump_data(teacher)
-            resp = message(True, "Teacher data sent successfully")
-            resp["teacher"] = teacher_data
-            current_app.logger.debug(
-                f"Successfully retrieved teacher ID {teacher_id}"
-            )  # Add logging
-            return resp, 200
-        except Exception as error:
-            current_app.logger.error(
-                f"Error serializing teacher data for ID {teacher_id}: {error}",  # Update log message
-                exc_info=True,
-            )
+            # Removed specialization_name enrichment
+            return {"status": True, "message": "Teacher data sent successfully.", "teacher": teacher_data}, 200
+        except Exception as e:
+            current_app.logger.error(f"Error getting teacher {teacher_id}: {e}", exc_info=True)
             return internal_err_resp()
 
-    # --- GET List with Filters and Pagination (Admin only) ---
     @staticmethod
-    # Add type hints
     def get_all_teachers(
-        module_id=None,
-        page=None,
-        per_page=None,
-        current_user_role=None,  # Kept for explicit check
+        module_id=None, archived=0, # Removed specialization_id
+        page=None, per_page=None,
+        current_user_role=None, current_user_id=None
     ):
-        """Get a paginated list of teachers, filtered (Admin only view)"""
-        
-
         page = page or 1
         per_page = per_page or 10
+        archived_bool = bool(archived)
 
         try:
             query = Teacher.query
-            filters_applied = {}
+            filters_applied = {"archived": archived_bool}
 
-            # Apply filters
+            if current_user_role != "admin" and archived_bool:
+                current_app.logger.warning(f"Non-admin {current_user_id} ({current_user_role}) tried to list archived teachers. Showing non-archived.")
+                query = query.filter(Teacher.archived == False)
+                filters_applied["archived"] = False
+            else:
+                query = query.filter(Teacher.archived == archived_bool)
+
+            # Removed specialization_id filter
             if module_id is not None:
                 filters_applied["module_id"] = module_id
-                # Join with TeacherModuleAssociation to filter by module
-                query = query.join(TeacherModuleAssociation).filter(
-                    TeacherModuleAssociation.module_id == module_id
-                )
+                query = query.join(TeacherModuleAssociation).filter(TeacherModuleAssociation.module_id == module_id)
 
-            if filters_applied:
-                current_app.logger.debug(
-                    f"Applying teacher list filters: {filters_applied}"
-                )
+            current_app.logger.debug(f"Teacher list filters applied: {filters_applied}")
+            query = query.order_by(Teacher.last_name, Teacher.first_name)
+            paginated_teachers = query.paginate(page=page, per_page=per_page, error_out=False)
 
-            # Add ordering
-            query = query.order_by(Teacher.last_name).order_by(Teacher.first_name)
-            
+            teachers_raw = paginated_teachers.items
+            teachers_data = dump_data(teachers_raw, many=True)
 
-            # Implement pagination
-            current_app.logger.debug(
-                f"Paginating teachers: page={page}, per_page={per_page}"
-            )
-            paginated_teachers = query.paginate(
-                page=page, per_page=per_page, error_out=False
-            )
-            
-            current_app.logger.debug(
-                f"Paginated teachers items count: {len(paginated_teachers.items)}"
-            )
+            # Removed specialization_name enrichment logic
 
-            # Serialize results using dump_data (excludes password)
-            teachers_data = dump_data(paginated_teachers.items, many=True)
-            print(teachers_data)
-
-            current_app.logger.debug(f"Serialized {len(teachers_data)} teachers")
-            resp = message(True, "Teachers list retrieved successfully")
-            # Add pagination metadata
-            resp["teachers"] = teachers_data
-            resp["total"] = paginated_teachers.total
-            resp["pages"] = paginated_teachers.pages
-            resp["current_page"] = paginated_teachers.page
-            resp["per_page"] = paginated_teachers.per_page
-            resp["has_next"] = paginated_teachers.has_next
-            resp["has_prev"] = paginated_teachers.has_prev
-
-            current_app.logger.debug(
-                f"Successfully retrieved teachers page {page}. Total: {paginated_teachers.total}"
-            )
+            resp = message(True, "Teachers list retrieved successfully.")
+            resp.update({
+                "teachers": teachers_data, "total": paginated_teachers.total, "pages": paginated_teachers.pages,
+                "current_page": paginated_teachers.page, "per_page": paginated_teachers.per_page,
+                "has_next": paginated_teachers.has_next, "has_prev": paginated_teachers.has_prev
+            })
             return resp, 200
-
-        except Exception as error:
-            log_msg = f"Error getting teachers list"
-            if page:
-                log_msg += f", page {page}"
-            current_app.logger.error(f"{log_msg}: {error}", exc_info=True)
+        except Exception as e:
+            current_app.logger.error(f"Error getting all teachers: {e}", exc_info=True)
             return internal_err_resp()
 
-    # --- CREATE (Admin only) ---
     @staticmethod
     def create_teacher(data: dict):
-        """Create a new teacher. Assumes @roles_required('admin') handled authorization."""
         try:
-            from app.models.Schemas import TeacherSchema  # Using SQLAlchemyAutoSchema with load_instance=True
-            teacher_schema = TeacherSchema()
-            
-            teacher_instance = teacher_schema.load(data)  # <- Already a Teacher object now!
+            existing_teacher = Teacher.query.filter_by(email=data.get("email")).first()
+            if existing_teacher:
+                status = "archived" if existing_teacher.archived else "active"
+                return err_resp(f"Email '{data.get('email')}' already used by an {status} teacher.", "duplicate_email", 409)
 
-            # Hash the password AFTER loading
-            teacher_instance.password = generate_password_hash(teacher_instance.password)
-            current_app.logger.debug(f"Password hashed for teacher email: {teacher_instance.email}")
+            # fk_errors = TeacherService._validate_foreign_keys(data) # No FKs to validate now
+            # if fk_errors: return validation_error(False, fk_errors), 400
 
-            db.session.add(teacher_instance)
+            new_teacher = load_data(data)
+            new_teacher.archived = False
+            new_teacher.password = generate_password_hash(data["password"])
+
+            db.session.add(new_teacher)
             db.session.commit()
-            current_app.logger.info(f"Teacher created successfully with ID: {teacher_instance.id}")
-
-            teacher_resp_data = dump_data(teacher_instance)
-            resp = message(True, "Teacher created successfully.")
-            resp["teacher"] = teacher_resp_data
-            return resp, 201
-
+            teacher_data = dump_data(new_teacher)
+            return {"status": True, "message": "Teacher created successfully.", "teacher": teacher_data}, 201
         except ValidationError as err:
-            db.session.rollback()
-            current_app.logger.warning(f"Schema validation error creating teacher: {err.messages}. Data: {data}")
-            return validation_error(False, err.messages), 400
-        except IntegrityError as error:
-            db.session.rollback()
-            current_app.logger.warning(f"Database integrity error creating teacher: {error}. Data: {data}", exc_info=True)
-            if "teacher_email_key" in str(error.orig) or "UNIQUE constraint failed: teacher.email" in str(error.orig):
-                return err_resp(f"Email '{data.get('email')}' already exists.", "duplicate_email", 409)
-            return internal_err_resp()
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(f"Database error creating teacher: {error}. Data: {data}", exc_info=True)
-            return internal_err_resp()
-        except Exception as error:
-            db.session.rollback()
-            current_app.logger.error(f"Unexpected error creating teacher: {error}. Data: {data}", exc_info=True)
+            db.session.rollback(); return validation_error(False, err.messages), 400
+        except IntegrityError:
+            db.session.rollback(); return internal_err_resp()
+        except Exception as e:
+            db.session.rollback(); current_app.logger.error(f"Error creating teacher: {e}", exc_info=True)
             return internal_err_resp()
 
-    # --- UPDATE (Admin Perspective) ---
     @staticmethod
-    # Add type hints
     def update_teacher_by_admin(teacher_id: int, data: dict):
-        """Update an existing teacher by ID. Assumes @roles_required('admin') handled authorization."""
-        # No role check needed here - decorator handles it.
+        teacher = Teacher.query.filter_by(id=teacher_id, archived=False).first()
+        if not teacher: return err_resp("Teacher not found or is archived.", "teacher_not_active_update", 404)
+        if not data: return err_resp("Request body cannot be empty.", "empty_update_data", 400)
 
-        teacher = Teacher.query.get(teacher_id)
-        if not teacher:
-            current_app.logger.info(
-                f"Attempted admin update for non-existent teacher ID: {teacher_id}"
-            )  # Add logging
-            return err_resp("Teacher not found!", "teacher_404", 404)
+        data.pop("archived", None)
+        data.pop("email", None)
+        data.pop("password", None)
+        # data.pop("specialization_id", None) # No longer needed
 
-        try:
-            # Update fields
-            if "first_name" in data:
-                teacher.first_name = data["first_name"]
-            if "last_name" in data:
-                teacher.last_name = data["last_name"]
-            if "email" in data:
-                teacher.email = data["email"]
-            if "phone_number" in data:
-                teacher.phone_number = data["phone_number"]
-            if "address" in data:
-                teacher.address = data["address"]
-            if "profile_picture" in data:
-                teacher.profile_picture = data["profile_picture"]
-            if "module_key" in data:
-                teacher.module_key = data["module_key"]
-
-            db.session.commit()
-            current_app.logger.info(f"Teacher {teacher_id} updated successfully by admin")
-
-            teacher_data = dump_data(teacher)
-            resp = message(True, "Teacher updated successfully.")
-            resp["teacher"] = teacher_data
-            return resp, 200
-
-        except ValidationError as err:
-            db.session.rollback()
-            current_app.logger.warning(
-                f"Validation error updating teacher: {err.messages}"
-            )
-            return validation_error(False, err.messages), 400
-        except IntegrityError as error:
-            db.session.rollback()
-            current_app.logger.warning(
-                f"Integrity error updating teacher: {error}", exc_info=True
-            )
-            if "teacher_email_key" in str(error.orig):
-                return err_resp(
-                    f"Email '{data.get('email')}' already exists.",
-                    "duplicate_email",
-                    409,
-                )
-            return internal_err_resp()
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Database error updating teacher: {error}", exc_info=True
-            )
-            return internal_err_resp()
-        except Exception as error:
-            db.session.rollback()
-            current_app.logger.error(f"Error updating teacher: {error}", exc_info=True)
-            return internal_err_resp()
-
-    # --- UPDATE (Teacher updating own profile) ---
-    @staticmethod
-    # Add type hints
-    def update_own_profile(current_user_id: int, data: dict):
-        """Update the currently logged-in teacher's own profile. Assumes @roles_required('teacher') handled authorization."""
-        teacher = Teacher.query.get(current_user_id)
-        if not teacher:
-            current_app.logger.error(
-                f"Attempted self-update for non-existent teacher ID: {current_user_id}. JWT might be invalid."
-            )
-            return err_resp("Teacher profile not found.", "self_not_found", 404)
-
-        if not data:
-            current_app.logger.warning(
-                f"Attempted self-update for teacher {current_user_id} with empty data."
-            )  # Add logging
-            return err_resp(
-                "Request body cannot be empty for update.", "empty_update_data", 400
-            )
+        # fk_errors = TeacherService._validate_foreign_keys(data, instance=teacher) # No FKs to validate now
+        # if fk_errors: return validation_error(False, fk_errors), 400
 
         try:
-            # Use load_data with partial=True and instance=teacher
-            # Ensure TeacherSchema excludes email, password, module_key for partial self-updates
             updated_teacher = load_data(data, partial=True, instance=teacher)
-            current_app.logger.debug(
-                f"Teacher data validated by schema for self-update. Committing changes for ID: {current_user_id}"
-            )  # Add logging
-
             db.session.commit()
-            current_app.logger.info(
-                f"Teacher self-profile updated successfully for ID: {current_user_id}"
-            )  # Add logging
-
-            # Serialize & Respond using dump_data
-            teacher_resp_data = dump_data(updated_teacher)
-            resp = message(True, "Your profile has been updated successfully.")
-            resp["teacher"] = teacher_resp_data
-            return resp, 200
-
+            return {"status": True, "message": "Teacher updated successfully.", "teacher": dump_data(updated_teacher)}, 200
         except ValidationError as err:
-            db.session.rollback()
-            current_app.logger.warning(
-                f"Schema validation error during self-update for teacher {current_user_id}: {err.messages}. Data: {data}"
-            )
-            return validation_error(False, err.messages), 400
-        except (
-            IntegrityError
-        ) as error:  # Catch potential unique constraint violations (e.g., phone if unique)
-            db.session.rollback()
-            current_app.logger.warning(
-                f"Database integrity error during self-update for teacher {current_user_id}: {error}. Data: {data}",
-                exc_info=True,
-            )
-            # Add specific checks if needed
-            return internal_err_resp()  # Or a specific 409
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Database error during self-update for teacher {current_user_id}: {error}. Data: {data}",
-                exc_info=True,
-            )
-            return internal_err_resp()
-        except Exception as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Unexpected error during self-update for teacher {current_user_id}: {error}. Data: {data}",
-                exc_info=True,
-            )
+            db.session.rollback(); return validation_error(False, err.messages), 400
+        except Exception as e:
+            db.session.rollback(); current_app.logger.error(f"Error updating teacher (admin) {teacher_id}: {e}", exc_info=True)
             return internal_err_resp()
 
-    # --- DELETE (Admin only) ---
     @staticmethod
-    # Add type hint
-    def delete_teacher(teacher_id: int):
-        """Delete a teacher by ID. Assumes @roles_required('admin') handled authorization."""
-        # No role check needed here - decorator handles it.
+    def update_own_profile(current_user_id: int, data: dict):
+        teacher = Teacher.query.filter_by(id=current_user_id, archived=False).first()
+        if not teacher: return err_resp("Teacher profile not found or is archived.", "teacher_profile_not_active", 403)
+        if not data: return err_resp("Request body cannot be empty.", "empty_update_data", 400)
 
-        teacher = Teacher.query.get(teacher_id)
-        if not teacher:
-            current_app.logger.info(
-                f"Attempted admin delete for non-existent teacher ID: {teacher_id}"
-            )  # Add logging
-            return err_resp("Teacher not found!", "teacher_404", 404)
+        data.pop("archived", None)
+        data.pop("email", None)
+        data.pop("password", None)
+        # data.pop("specialization_id", None) # No longer needed
 
         try:
-            # --- Dependency Checks ---
-            # Check modules assigned via association table
-            modules_assigned = (
-                Module.query.join(Teacher).filter(Teacher.id == teacher_id).all()
-            )
-            if modules_assigned:
-                module_names = [m.name for m in modules_assigned]
-                current_app.logger.warning(
-                    f"Delete conflict for teacher {teacher_id}: Assigned to modules: {module_names}"
-                )
-                return err_resp(
-                    f"Cannot delete teacher: Assigned to modules: {', '.join(module_names)}. Reassign modules first.",
-                    "delete_conflict_modules",
-                    409,
-                )
-
-            # Check sessions (direct relationship)
-            if teacher.sessions:
-                session_ids = [s.id for s in teacher.sessions[:5]]  # Example IDs
-                current_app.logger.warning(
-                    f"Delete conflict for teacher {teacher_id}: Has sessions: {session_ids}"
-                )
-                return err_resp(
-                    f"Cannot delete teacher: Associated with existing sessions (e.g., IDs: {session_ids}). Delete or reassign sessions first.",
-                    "delete_conflict_sessions",
-                    409,
-                )
-
-            # If checks pass:
-            current_app.logger.warning(
-                f"Attempting admin delete for teacher {teacher_id}. THIS WILL CASCADE DELETE associated Teachings, Cours, Notes."
-            )  # Log warning
-
-            db.session.delete(teacher)
+            updated_teacher = load_data(data, partial=True, instance=teacher)
             db.session.commit()
-
-            current_app.logger.info(
-                f"Teacher {teacher_id} and associated data (Teachings, Cours, Notes) deleted successfully by admin."  # Clarify admin action
-            )
-            return None, 204
-
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Database error during admin delete for teacher {teacher_id}: {error}",
-                exc_info=True,
-            )
-            return err_resp(
-                f"Could not delete teacher due to a database constraint or error.",
-                "delete_error_db",
-                500,
-            )
-        except Exception as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Unexpected error during admin delete for teacher {teacher_id}: {error}",
-                exc_info=True,
-            )
+            return {"status": True, "message": "Profile updated successfully.", "teacher": dump_data(updated_teacher)}, 200
+        except ValidationError as err:
+            db.session.rollback(); return validation_error(False, err.messages), 400
+        except Exception as e:
+            db.session.rollback(); current_app.logger.error(f"Error teacher self-update {current_user_id}: {e}", exc_info=True)
             return internal_err_resp()
 
-    # --- Assign Module to Teacher ---
+    @staticmethod
+    def archive_teacher(teacher_id: int):
+        teacher = Teacher.query.get(teacher_id)
+        if not teacher: return err_resp("Teacher not found!", "teacher_404", 404)
+        if teacher.archived:
+            return {"status": True, "message": "Teacher is already archived.", "teacher": dump_data(teacher)}, 200
+
+        try:
+            teacher.archived = True
+            # Consider implications: unassign from active sessions or modules?
+            # For now, just marking as archived.
+            # If TeacherModuleAssociation has a cascade on teacher delete, it might be an issue if you were hard deleting.
+            # For soft delete, these associations would remain unless explicitly handled.
+            db.session.commit()
+            current_app.logger.info(f"Teacher archived: ID {teacher_id}")
+            return {"status": True, "message": "Teacher archived successfully.", "teacher": dump_data(teacher)}, 200
+        except Exception as e:
+            db.session.rollback(); current_app.logger.error(f"Error archiving teacher {teacher_id}: {e}", exc_info=True)
+            return internal_err_resp()
+
+    @staticmethod
+    def unarchive_teacher(teacher_id: int):
+        teacher = Teacher.query.get(teacher_id)
+        if not teacher: return err_resp("Teacher not found!", "teacher_404", 404)
+        if not teacher.archived:
+            return {"status": True, "message": "Teacher is already active.", "teacher": dump_data(teacher)}, 200
+
+        try:
+            existing_active_teacher = Teacher.query.filter(
+                Teacher.email == teacher.email,
+                Teacher.archived == False,
+                Teacher.id != teacher_id
+            ).first()
+            if existing_active_teacher:
+                return err_resp(f"Cannot unarchive. Email '{teacher.email}' is in use by another active teacher.", "email_conflict_unarchive_teacher", 409)
+
+            teacher.archived = False
+            db.session.commit()
+            current_app.logger.info(f"Teacher unarchived: ID {teacher_id}")
+            return {"status": True, "message": "Teacher unarchived successfully.", "teacher": dump_data(teacher)}, 200
+        except Exception as e:
+            db.session.rollback(); current_app.logger.error(f"Error unarchiving teacher {teacher_id}: {e}", exc_info=True)
+            return internal_err_resp()
+
     @staticmethod
     def assign_module(teacher_id: int, module_id: int):
-        """Assign a module to a teacher"""
+        teacher = Teacher.query.filter_by(id=teacher_id, archived=False).first() # Assign only to active teachers
+        if not teacher: return err_resp("Teacher not found or is archived.", "teacher_not_active_assign", 404)
+
+        module = Module.query.get(module_id)
+        if not module: return err_resp("Module not found!", "module_404_assign", 404)
+
+        existing_association = TeacherModuleAssociation.query.filter_by(teacher_id=teacher_id, module_id=module_id).first()
+        if existing_association:
+            return err_resp("Module already assigned to this teacher.", "duplicate_assignment", 409)
+
         try:
-            # Check if both teacher and module exist
-            teacher = Teacher.query.get(teacher_id)
-            module = Module.query.get(module_id)
-            
-            if not teacher:
-                return err_resp("Teacher not found!", "teacher_404", 404)
-            if not module:
-                return err_resp("Module not found!", "module_404", 404)
-            
-            # Check if association already exists
-            existing_association = TeacherModuleAssociation.query.filter_by(
-                teacher_id=teacher_id,
-                module_id=module_id
-            ).first()
-            
-            if existing_association:
-                return err_resp(
-                    "Module is already assigned to this teacher.",
-                    "duplicate_assignment",
-                    409
-                )
-            
-            # Create new association
-            association = TeacherModuleAssociation(
-                teacher_id=teacher_id,
-                module_id=module_id
-            )
-            
+            association = TeacherModuleAssociationSchema().load({
+                "teacher_id": teacher_id,
+                "module_id": module_id
+            })
             db.session.add(association)
             db.session.commit()
-            
             return message(True, "Module assigned to teacher successfully."), 201
-            
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Database error assigning module to teacher: {error}",
-                exc_info=True
-            )
-            return internal_err_resp()
-        except Exception as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Error assigning module to teacher: {error}",
-                exc_info=True
-            )
+        except Exception as e:
+            db.session.rollback(); current_app.logger.error(f"Error assigning module {module_id} to teacher {teacher_id}: {e}", exc_info=True)
             return internal_err_resp()
 
-    # --- Remove Module from Teacher ---
     @staticmethod
     def remove_module(teacher_id: int, module_id: int):
-        """Remove a module from a teacher"""
+        teacher = Teacher.query.get(teacher_id) # Allow removal even if teacher is archived (cleanup)
+        if not teacher: return err_resp("Teacher not found!", "teacher_404_remove_module", 404)
+
+        association = TeacherModuleAssociation.query.filter_by(teacher_id=teacher_id, module_id=module_id).first()
+        if not association:
+            return err_resp("Module is not assigned to this teacher.", "assignment_not_found_remove", 404)
+
         try:
-            # Check if association exists
-            association = TeacherModuleAssociation.query.filter_by(
-                teacher_id=teacher_id,
-                module_id=module_id
-            ).first()
-            
-            if not association:
-                return err_resp(
-                    "Module is not assigned to this teacher.",
-                    "assignment_not_found",
-                    404
-                )
-            
             db.session.delete(association)
             db.session.commit()
-            
-            return None, 204  # No Content
-            
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Database error removing module from teacher: {error}",
-                exc_info=True
-            )
-            return internal_err_resp()
-        except Exception as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Error removing module from teacher: {error}",
-                exc_info=True
-            )
+            return None, 204
+        except Exception as e:
+            db.session.rollback(); current_app.logger.error(f"Error removing module {module_id} from teacher {teacher_id}: {e}", exc_info=True)
             return internal_err_resp()

@@ -10,14 +10,18 @@ class ParentDto:
     parent_filter_parser = RequestParser(bundle_errors=True)
     parent_filter_parser.add_argument(
         "is_email_verified",
-        type=lambda x: x.lower() == 'true' if isinstance(x, str) else bool(x),
+        type=lambda x: (
+            x.lower() == "true" if isinstance(x, str) else bool(x)
+        ),  # Keep existing bool conversion
         location="args",
         required=False,
         help="Filter parents by email verification status (true/false).",
     )
     parent_filter_parser.add_argument(
         "is_phone_verified",
-        type=lambda x: x.lower() == 'true' if isinstance(x, str) else bool(x),
+        type=lambda x: (
+            x.lower() == "true" if isinstance(x, str) else bool(x)
+        ),  # Keep existing bool conversion
         location="args",
         required=False,
         help="Filter parents by phone verification status (true/false).",
@@ -29,12 +33,21 @@ class ParentDto:
         required=False,
         help="Filter parents by their student's ID.",
     )
-    parent_filter_parser.add_argument( # ADDED teacher_id filter
+    parent_filter_parser.add_argument(
         "teacher_id",
         type=int,
         location="args",
         required=False,
         help="Filter parents by the ID of a teacher who teaches their student(s).",
+    )
+    parent_filter_parser.add_argument(  # ADDED archived filter
+        "archived",
+        type=int,
+        location="args",
+        required=False,
+        default=0,
+        choices=(0, 1),
+        help="Filter parents by archived status (1 for archived, 0 for not archived. Default: 0).",
     )
     parent_filter_parser.add_argument(
         "page",
@@ -77,12 +90,13 @@ class ParentDto:
                 readonly=True,
                 description="Indicates if the parent's phone number is verified",
             ),
-            "address": fields.String(
-                required=False, description="Parent's address"
-            ),
+            "address": fields.String(required=False, description="Parent's address"),
             "profile_picture": fields.String(
                 required=False,
                 description="URL to parent's profile picture",
+            ),
+            "archived": fields.Boolean(  # ADDED archived field to response
+                readonly=True, description="Indicates if the parent account is archived"
             ),
             "created_at": fields.DateTime(
                 readonly=True,
@@ -144,13 +158,12 @@ class ParentDto:
             "last_name": fields.String(
                 required=False, description="Parent's last name"
             ),
-            "address": fields.String(
-                required=False, description="Parent's address"
-            ),
+            "address": fields.String(required=False, description="Parent's address"),
             "profile_picture": fields.String(
                 required=False,
                 description="URL to parent's profile picture",
             ),
+            # 'archived' is not set on creation, defaults to False in model
         },
     )
 
@@ -166,34 +179,28 @@ class ParentDto:
             "phone_number": fields.String(
                 required=False, description="Parent's phone number"
             ),
-            "address": fields.String(
-                required=False, description="Parent's address"
-            ),
+            "address": fields.String(required=False, description="Parent's address"),
             "profile_picture": fields.String(
                 required=False,
                 description="URL to parent's profile picture",
             ),
+            # 'archived' status is managed by specific archive/unarchive endpoints
         },
     )
 
     parent_self_update_input = api.model(
         "Parent Self Update Input",
         {
-            "first_name": fields.String(
-                required=False, description="Your first name"
-            ),
-            "last_name": fields.String(
-                required=False, description="Your last name"
-            ),
+            "first_name": fields.String(required=False, description="Your first name"),
+            "last_name": fields.String(required=False, description="Your last name"),
             "phone_number": fields.String(
                 required=False,
                 description="Your phone number (may require re-verification)",
             ),
-            "address": fields.String(
-                required=False, description="Your address"
-            ),
+            "address": fields.String(required=False, description="Your address"),
             "profile_picture": fields.String(
                 required=False, description="URL to your profile picture"
             ),
+            # 'archived' status is managed by specific archive/unarchive endpoints
         },
     )

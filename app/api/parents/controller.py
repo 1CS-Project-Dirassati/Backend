@@ -29,10 +29,10 @@ def get_current_user_info():
 class ParentList(Resource):
 
     @api.doc(
-        "List parents (Admin or Teacher)",  # Updated role
+        "List parents (Admin or Teacher)",
         security="Bearer",
         parser=parent_filter_parser,
-        description="Get a paginated list of all parents. Filterable by verification status, student ID, or teacher ID. (Admin or Teacher access required)",  # Updated description
+        description="Get a paginated list of parents. Filterable by verification status, student ID, teacher ID, and archived status.",  # Updated
         responses={
             200: ("Success", list_data_resp),
             401: "Unauthorized",
@@ -58,15 +58,17 @@ class ParentList(Resource):
             is_email_verified=args.get("is_email_verified"),
             is_phone_verified=args.get("is_phone_verified"),
             student_id=args.get("student_id"),
-            teacher_id=args.get("teacher_id"),  # ADDED teacher_id
+            teacher_id=args.get("teacher_id"),
+            archived=args.get("archived", 0),  # ADDED archived argument
             page=args.get("page"),
             per_page=args.get("per_page"),
-            current_user_role=role,  # current_user_role is still passed for consistency
+            current_user_role=role,
         )
 
     @api.doc(
         "Create a new parent (Admin only)",
         security="Bearer",
+        description="Create a new parent account (Admin only). Parent will be active (not archived).",  # Updated
         responses={
             201: ("Created", data_resp),
             400: "Validation Error",
@@ -99,20 +101,18 @@ class ParentResource(Resource):
     @api.doc(
         "Get a specific parent by ID",
         security="Bearer",
-        description="Get data for a specific parent. Access restricted to Admins or the parent themselves.",
+        description="Get data for a specific parent. Access restricted. Archived parents might not be directly accessible.",  # Updated
         responses={
             200: ("Success", data_resp),
             401: "Unauthorized",
             403: "Forbidden",
-            404: "Not Found",
+            404: "Not Found (or archived and not permitted to view)",  # Updated
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
     )
     @jwt_required()
-    @roles_required(
-        "admin", "parent", "teacher"
-    )  # Teacher might need to get a specific parent if they teach their child
+    @roles_required("admin", "parent", "teacher")
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_PARENT_GET", "100/minute")
     )
@@ -122,21 +122,18 @@ class ParentResource(Resource):
         user_id = get_jwt_identity()
         claims = get_jwt()
         role = claims["role"]
-        # If the role is teacher, an additional check might be needed in the service
-        # to ensure the teacher is linked to this parent via a student.
-        # For now, the roles_required decorator allows them, service handles specifics.
         return ParentService.get_parent_data(parent_id, user_id, role)
 
     @api.doc(
         "Update a parent (Admin only)",
         security="Bearer",
-        description="Update limited fields for a parent (Admin access required).",
+        description="Update limited fields for a parent (Admin access required). Cannot unarchive via this endpoint.",  # Updated
         responses={
             200: ("Success", data_resp),
             400: "Validation Error/Empty Body",
             401: "Unauthorized",
             403: "Forbidden",
-            404: "Not Found",
+            404: "Not Found (or archived)",  # Updated
             409: "Conflict",
             429: "Too Many Requests",
             500: "Internal Server Error",
@@ -144,9 +141,7 @@ class ParentResource(Resource):
     )
     @api.expect(parent_admin_update_input, validate=True)
     @jwt_required()
-    @roles_required(
-        "admin"
-    )  # Changed from "admin","parent" to just "admin" for this specific admin update endpoint
+    @roles_required("admin")
     @limiter.limit(
         lambda: current_app.config.get("RATE_LIMIT_PARENT_ADMIN_UPDATE", "30/minute")
     )
@@ -159,30 +154,66 @@ class ParentResource(Resource):
         return ParentService.update_parent_by_admin(parent_id, data)
 
     @api.doc(
-        "Delete a parent (Admin only)",
+        "Archive a parent (Admin only)",  # CHANGED from Delete to Archive
         security="Bearer",
-        description="Delete a parent and ALL associated students, fees, notifications (Admin access required). USE WITH CAUTION.",
+        description="Archive a parent's profile and all their associated students (Admin access required). This is a soft delete.",  # CHANGED
         responses={
-            204: "No Content - Success",
+            200: (
+                "Success - Parent and associated students archived",
+                data_resp,
+            ),  # CHANGED to 200 and data_resp
             401: "Unauthorized",
             403: "Forbidden",
             404: "Not Found",
-            409: "Conflict (Pre-delete checks failed)",
             429: "Too Many Requests",
             500: "Internal Server Error",
         },
     )
     @jwt_required()
-    @roles_required("admin")  # Changed from "admin","parent" to just "admin"
+    @roles_required("admin")
     @limiter.limit(
-        lambda: current_app.config.get("RATE_LIMIT_PARENT_DELETE", "5/minute")
+        lambda: current_app.config.get(
+            "RATE_LIMIT_PARENT_ARCHIVE", "5/minute"
+        )  # New limit key
     )
-    def delete(self, parent_id: int):
-        """Delete a parent (Admin only) - WARNING: Cascades to students etc."""
-        current_app.logger.debug(
-            f"Received DELETE request by admin for parent ID: {parent_id}"
+    def delete(self, parent_id: int):  # Method name remains DELETE for REST convention
+        """Archive a parent and their students (Admin only) - Soft Delete"""
+        current_app.logger.warning(
+            f"Received DELETE (archive) request by admin for parent ID: {parent_id}"
         )
-        return ParentService.delete_parent(parent_id)
+        return ParentService.archive_parent(parent_id)  # CHANGED service call
+
+
+@api.route("/<int:parent_id>/unarchive")  # NEW ROUTE
+@api.param("parent_id", "The unique identifier of the parent to unarchive")
+class ParentUnarchive(Resource):
+    @api.doc(
+        "Unarchive a parent (Admin only)",
+        security="Bearer",
+        description="Unarchive a parent's profile. This does NOT automatically unarchive their students. (Admin access required).",
+        responses={
+            200: ("Success - Parent Unarchived", data_resp),
+            400: "Bad Request (e.g., parent not archived)",
+            401: "Unauthorized",
+            403: "Forbidden",
+            404: "Not Found",
+            429: "Too Many Requests",
+            500: "Internal Server Error",
+        },
+    )
+    @jwt_required()
+    @roles_required("admin")
+    @limiter.limit(
+        lambda: current_app.config.get(
+            "RATE_LIMIT_PARENT_UNARCHIVE", "5/minute"
+        )  # New rate limit key
+    )
+    def post(self, parent_id: int):  # Using POST for action
+        """Unarchive a parent (Admin only)."""
+        current_app.logger.info(
+            f"Received POST (unarchive) request by Admin for parent ID: {parent_id}"
+        )
+        return ParentService.unarchive_parent(parent_id)
 
 
 @api.route("/me")
@@ -191,12 +222,12 @@ class ParentProfile(Resource):
     @api.doc(
         "Get own parent profile",
         security="Bearer",
-        description="Get the profile data for the currently logged-in parent.",
+        description="Get the profile data for the currently logged-in parent. Returns 404 if parent is archived.",  # Updated
         responses={
             200: ("Success", data_resp),
             401: "Unauthorized",
             403: "Forbidden",
-            404: "Not Found",
+            404: "Not Found (or archived)",  # Updated
             500: "Internal Server Error",
         },
     )
@@ -212,18 +243,20 @@ class ParentProfile(Resource):
         current_app.logger.debug(
             f"Received GET request for own parent profile (ID: {user_id})"
         )
-        return ParentService.get_parent_data(user_id, user_id, role)
+        return ParentService.get_parent_data(
+            user_id, user_id, role
+        )  # get_parent_data will handle archived check
 
     @api.doc(
         "Update own parent profile",
         security="Bearer",
-        description="Update profile details for the currently logged-in parent.",
+        description="Update profile details for the currently logged-in parent. Fails if parent is archived.",  # Updated
         responses={
             200: ("Success", data_resp),
             400: "Validation Error/Empty Body",
             401: "Unauthorized",
-            403: "Forbidden",
-            404: "Not Found",
+            403: "Forbidden (or parent archived)",  # Updated
+            404: "Not Found",  # Should be caught by service if archived
             409: "Conflict",
             500: "Internal Server Error",
         },

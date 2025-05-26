@@ -20,8 +20,10 @@ class User(Model):
     first_name = Column(db.String(50), nullable=True)
     last_name = Column(db.String(50), nullable=True)
     email = Column(db.String(100), unique=True, nullable=False, index=True)
+
     password = Column(db.String(200), nullable=False)  # Stores pre-hashed password
     user_type = Column(db.String(50), nullable=False)  # Discriminator column
+    archived = Column(db.Boolean, default=False, nullable=False)
 
     created_at = Column(
         db.DateTime(timezone=True),
@@ -44,7 +46,6 @@ class User(Model):
         # It will only permit instances of its subclasses (Admin, Parent, etc.).
         "polymorphic_on": user_type
     }
-
 
     def verify_password(self, password_to_check):
         return check_password_hash(self.password, password_to_check)

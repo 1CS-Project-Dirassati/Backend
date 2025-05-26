@@ -1,16 +1,17 @@
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from sqlalchemy.orm import aliased  # Import aliased for cleaner joins
+from sqlalchemy.orm.dynamic import AppenderQuery
+
+# from sqlalchemy.orm import aliased # Not used in this snippet
 from marshmallow import ValidationError
 from werkzeug.security import generate_password_hash
 
 from app import db
 from app.models import (
-    Group,
     Parent,
     Student,
-    Session,  # Import Session model
-    # Fee, Notification etc. only needed if manually checking cascade on delete
+    Session,  # Used in _can_user_access_parent_record via teacher link
+    Group,  # Used in get_all_parents via teacher_id filter
 )
 
 from app.utils import (
@@ -26,59 +27,79 @@ from .utils import dump_data, load_data
 class ParentService:
 
     @staticmethod
-    def get_parent_data(parent_id: int, current_user_id: int, current_user_role: str):
-        """Get parent data by ID, with record-level authorization check"""
-        parent = Parent.query.get(parent_id)
+    def _can_user_access_parent_record(
+        parent: Parent,
+        current_user_id: int,
+        current_user_role: str,
+        allow_archived_view_for_admin=False,
+    ) -> bool:
+        """Checks if the current user can access THIS SPECIFIC parent record."""
         if not parent:
-            current_app.logger.info(f"Parent with ID {parent_id} not found.")
-            return err_resp("Parent not found!", "parent_404", 404)
+            return False
 
-        # Record-Level Authorization Check
-        can_access = False
+        # If parent is archived, special rules apply
+        if parent.archived and not (
+            current_user_role == "admin" and allow_archived_view_for_admin
+        ):
+            current_app.logger.debug(
+                f"Access denied to archived parent {parent.id} for user {current_user_id} ({current_user_role})."
+            )
+            return False
+
         if current_user_role == "admin":
-            can_access = True
-        elif current_user_role == "parent" and int(current_user_id) == parent.id:
-            can_access = True
-        elif current_user_role == "teacher":
-            # Teacher can access if they teach one of the parent's students
-            # This logic can be complex, for now, let's assume if they have a link.
-            # A more robust check would join through Student and Session.
-            # For simplicity in this specific method, we might rely on the list view filtering for teachers.
-            # Or, add a specific check here:
-            teacher_has_link = (
+            return True
+        if current_user_role == "parent" and parent.id == int(
+            current_user_id
+        ):  # Parent accessing own (active) profile
+            return True
+        if (
+            current_user_role == "teacher"
+        ):  # Teacher can access parent if they teach one of their (active) students
+            # Check if parent has any active students taught by this teacher
+            has_link = (
                 db.session.query(Parent.id)
                 .join(Parent.students)
-                .join(Student.sessions)
-                .filter(Session.teacher_id == current_user_id, Parent.id == parent_id)
+                .filter(Student.archived == False)
+                .join(Student.group)
+                .join(Group.sessions)
+                .filter(Session.teacher_id == current_user_id, Parent.id == parent.id)
                 .first()
             )
-            if teacher_has_link:
-                can_access = True
+            return bool(has_link)
 
-        if not can_access:
-            current_app.logger.warning(
-                f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to access parent record {parent_id}."
-            )
-            return err_resp(
-                "Forbidden: You do not have permission to access this parent's data.",
-                "record_access_denied",
-                403,
-            )
-
-        current_app.logger.debug(
-            f"Record access granted for user {current_user_id} to parent {parent_id}."
+        current_app.logger.warning(
+            f"User {current_user_id} ({current_user_role}) denied access to parent {parent.id}."
         )
+        return False
+
+    @staticmethod
+    def get_parent_data(parent_id: int, current_user_id: int, current_user_role: str):
+        parent = Parent.query.get(parent_id)
+        allow_archived_view = current_user_role == "admin"
+
+        if not parent:
+            return err_resp("Parent not found!", "parent_404", 404)
+
+        if not ParentService._can_user_access_parent_record(
+            parent,
+            current_user_id,
+            current_user_role,
+            allow_archived_view_for_admin=allow_archived_view,
+        ):
+            return err_resp(
+                "Forbidden or Parent not found.",
+                "access_denied_or_not_found",
+                403 if parent.archived else 404,
+            )
 
         try:
             parent_data = dump_data(parent)
             resp = message(True, "Parent data sent successfully")
             resp["parent"] = parent_data
-            current_app.logger.debug(f"Successfully retrieved parent ID {parent_id}")
             return resp, 200
         except Exception as error:
             current_app.logger.error(
-                f"Error serializing parent data for ID {parent_id}: {error}",
-                exc_info=True,
+                f"Error serializing parent {parent_id}: {error}", exc_info=True
             )
             return internal_err_resp()
 
@@ -87,25 +108,32 @@ class ParentService:
         is_email_verified=None,
         is_phone_verified=None,
         student_id=None,
-        teacher_id=None,  # ADDED teacher_id parameter
+        teacher_id=None,
+        archived=0,  # Default to 0 (not archived)
         page=None,
         per_page=None,
-        current_user_role=None,
+        current_user_role=None,  # current_user_id not strictly needed here if role is sufficient for scoping
     ):
-        """Get a paginated list of parents, filtered (Admin or Teacher view)"""
-        # Role check for teacher specific logic if needed, though decorator covers general access
-        # if current_user_role not in ["admin", "teacher"]:
-        #     current_app.logger.warning(f"Unauthorized attempt to list parents by role: {current_user_role}")
-        #     return err_resp("Forbidden: You do not have permission to list parents.", "list_access_denied", 403)
-
         page = page or 1
         per_page = per_page or 10
+        archived_bool = bool(archived)  # Convert int (0/1) to boolean
 
         try:
             query = Parent.query
-            filters_applied = {}
+            filters_applied = {"archived": archived_bool}  # Start with archived status
 
-            # Apply filters
+            # Apply archived filter first
+            # Only admins can request a list of archived parents.
+            # Teachers and other roles will always see non-archived parents by default.
+            if current_user_role != "admin" and archived_bool:
+                current_app.logger.warning(
+                    f"Non-admin user ({current_user_role}) attempted to list archived parents. Overriding to non-archived."
+                )
+                query = query.filter(Parent.archived == False)
+                filters_applied["archived"] = False  # Log what is actually applied
+            else:
+                query = query.filter(Parent.archived == archived_bool)
+
             if is_email_verified is not None:
                 filters_applied["is_email_verified"] = is_email_verified
                 query = query.filter(Parent.is_email_verified == is_email_verified)
@@ -113,347 +141,324 @@ class ParentService:
                 filters_applied["is_phone_verified"] = is_phone_verified
                 query = query.filter(Parent.is_phone_verified == is_phone_verified)
 
-            # Student ID filter
-            if student_id is not None:
+            if student_id is not None:  # Filter by specific student
                 filters_applied["student_id"] = student_id
-                # Ensure Parent.students relationship exists and is correctly named
-                query = query.join(Parent.students).filter(Student.id == student_id)
+                query = query.join(Parent.students).filter(
+                    Student.id == student_id, Student.archived == False
+                )  # Only consider active students for this link
 
-            # Teacher ID filter - NEW
-            if teacher_id is not None:
+            if (
+                teacher_id is not None
+            ):  # Filter by teacher of one of their active students
                 filters_applied["teacher_id"] = teacher_id
-                # Join path: Parent -> Student -> student_session (association table for Student <-> Session) -> Session
-                # Assuming Student.sessions is the relationship to Session model (many-to-many or via association object)
-                # If Student.sessions directly links to Session model (e.g., if a student has a list of sessions they attend)
                 query = (
-                    query.join(Parent.students)  # Join Parent to Student
-                    .join(Student.group)  # Join Student to Group if needed
-                    .join(Group.sessions)  # Join Group to Session
+                    query.join(Parent.students)
+                    .filter(Student.archived == False)
+                    .join(Student.group)
+                    .join(Group.sessions)
                     .filter(Session.teacher_id == teacher_id)
                     .distinct()
-                )  # Use distinct to avoid duplicate parents if multiple students of same parent are taught by the teacher
-
-            if filters_applied:
-                current_app.logger.debug(
-                    f"Applying parent list filters: {filters_applied}"
                 )
 
-            query = query.order_by(
-                Parent.last_name, Parent.first_name
-            )  # Corrected order_by
-
-            current_app.logger.debug(
-                f"Paginating parents: page={page}, per_page={per_page}"
-            )
+            current_app.logger.debug(f"Applying parent list filters: {filters_applied}")
+            query = query.order_by(Parent.last_name, Parent.first_name)
             paginated_parents = query.paginate(
                 page=page, per_page=per_page, error_out=False
             )
-            current_app.logger.debug(
-                f"Paginated parents items count: {len(paginated_parents.items)}"
-            )
 
             parents_data = dump_data(paginated_parents.items, many=True)
-
-            current_app.logger.debug(f"Serialized {len(parents_data)} parents")
             resp = message(True, "Parents list retrieved successfully")
-            resp["parents"] = parents_data
-            resp["total"] = paginated_parents.total
-            resp["pages"] = paginated_parents.pages
-            resp["current_page"] = paginated_parents.page
-            resp["per_page"] = paginated_parents.per_page
-            resp["has_next"] = paginated_parents.has_next
-            resp["has_prev"] = paginated_parents.has_prev
-
-            current_app.logger.debug(
-                f"Successfully retrieved parents page {page}. Total: {paginated_parents.total}"
+            resp.update(
+                {
+                    "parents": parents_data,
+                    "total": paginated_parents.total,
+                    "pages": paginated_parents.pages,
+                    "current_page": paginated_parents.page,
+                    "per_page": paginated_parents.per_page,
+                    "has_next": paginated_parents.has_next,
+                    "has_prev": paginated_parents.has_prev,
+                }
             )
             return resp, 200
-
         except Exception as error:
-            log_msg = f"Error getting parents list"
-            if page:
-                log_msg += f", page {page}"
-            current_app.logger.error(f"{log_msg}: {error}", exc_info=True)
+            current_app.logger.error(
+                f"Error getting parents list: {error}", exc_info=True
+            )
             return internal_err_resp()
 
     @staticmethod
     def create_parent(data: dict):
-        """Create a new parent. Assumes @roles_required('admin') handled authorization."""
         try:
-            from app.models.Schemas import ParentSchema
-
-            parent_create_schema = ParentSchema(
-                exclude=(
-                    "is_email_verified",
-                    "is_phone_verified",
-                    "created_at",
-                    "updated_at",
-                    "id",
-                )  # Ensure these are not loaded
-            )
-            validated_data = parent_create_schema.load(data)
-
-            current_app.logger.debug(
-                f"Parent data validated by schema. Proceeding with hash."
-            )
-
-            password_plain = validated_data.pop("password")
-            password_hash = generate_password_hash(password_plain)
-            current_app.logger.debug(
-                f"Password hashed for parent email: {validated_data.get('email')}"
-            )
-
-            new_parent = {
-                **validated_data,
-                "password": password_hash,
-                "user_type": "parent",  # Set user_type to 'parent'
-            }
-
-            new_parent = load_data(new_parent)  # Convert dict to Parent model instance
-            db.session.add(new_parent)
-            db.session.commit()
-            current_app.logger.info(
-                f"Parent created successfully with ID: {new_parent.id}"
-            )
-
-            parent_resp_data = dump_data(new_parent)
-            resp = message(True, "Parent created successfully.")
-            resp["parent"] = parent_resp_data
-            return resp, 201
-
-        except ValidationError as err:
-            db.session.rollback()
-            current_app.logger.warning(
-                f"Schema validation error creating parent: {err.messages}. Data: {data}"
-            )
-            return validation_error(False, err.messages), 400
-        except IntegrityError as error:
-            db.session.rollback()
-            current_app.logger.warning(
-                f"Database integrity error creating parent: {error}. Data: {data}",
-                exc_info=True,
-            )
-            if "parent_email_key" in str(
-                error.orig
-            ) or "UNIQUE constraint failed: parent.email" in str(error.orig):
+            # Check if email already exists (active or archived)
+            existing_parent = Parent.query.filter_by(email=data.get("email")).first()
+            if existing_parent:
+                status = "archived" if existing_parent.archived else "active"
                 return err_resp(
-                    f"Email '{data.get('email')}' already exists.",
+                    f"Email '{data.get('email')}' already exists for an {status} parent.",
                     "duplicate_email",
                     409,
                 )
-            return internal_err_resp()
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Database error creating parent: {error}. Data: {data}", exc_info=True
+
+            # load_data uses ParentSchema. ParentSchema should not allow loading 'archived'.
+            new_parent_instance = load_data(data)  # Schema validates other fields
+            new_parent_instance.archived = (
+                False  # Explicitly set new parents as not archived
             )
+
+            # Handle password (assuming schema has password as load_only or you get it from raw data)
+            if "password" in data:
+                new_parent_instance.password = generate_password_hash(data["password"])
+            else:  # Should be caught by DTO validation if password is required
+                return err_resp("Password is required.", "password_missing", 400)
+
+            db.session.add(new_parent_instance)
+            db.session.commit()
+            parent_resp_data = dump_data(new_parent_instance)
+            return {
+                "status": True,
+                "message": "Parent created successfully.",
+                "parent": parent_resp_data,
+            }, 201
+        except ValidationError as err:
+            db.session.rollback()
+            return validation_error(False, err.messages), 400
+        except IntegrityError:  # Mostly for email if somehow not caught by pre-check
+            db.session.rollback()
             return internal_err_resp()
         except Exception as error:
             db.session.rollback()
-            current_app.logger.error(
-                f"Unexpected error creating parent: {error}. Data: {data}",
-                exc_info=True,
-            )
+            current_app.logger.error(f"Error creating parent: {error}", exc_info=True)
             return internal_err_resp()
 
     @staticmethod
     def update_parent_by_admin(parent_id: int, data: dict):
-        """Update an existing parent by ID. Assumes @roles_required('admin') handled authorization."""
-        parent = Parent.query.get(parent_id)
+        parent = Parent.query.filter_by(
+            id=parent_id, archived=False
+        ).first()  # Can only update non-archived
         if not parent:
-            current_app.logger.info(
-                f"Attempted admin update for non-existent parent ID: {parent_id}"
-            )
-            return err_resp("Parent not found!", "parent_404", 404)
-
-        if not data:
-            current_app.logger.warning(
-                f"Attempted admin update for parent {parent_id} with empty data."
-            )
             return err_resp(
-                "Request body cannot be empty for update.", "empty_update_data", 400
+                "Parent not found or is archived.", "parent_not_active_update", 404
             )
+        if not data:
+            return err_resp("Request body cannot be empty.", "empty_update_data", 400)
+
+        data.pop("archived", None)  # Archived status not updatable here
+        data.pop("email", None)  # Email typically not changed this way
+        data.pop("password", None)  # Password change should be a separate flow
 
         try:
-            # For admin updates, explicitly exclude fields admin shouldn't change
-            from app.models.Schemas import ParentSchema
-
-            admin_update_schema = ParentSchema(
-                partial=True,
-                exclude=(
-                    "id",
-                    "email",
-                    "password",
-                    "is_email_verified",
-                    "is_phone_verified",
-                    "created_at",
-                    "updated_at",
-                ),
-            )
-            # Use the schema's load method with instance for update
-            updated_parent = admin_update_schema.load(
-                data, instance=parent, partial=True
-            )
-
-            current_app.logger.debug(
-                f"Parent data validated by schema for admin update. Committing changes for ID: {parent_id}"
-            )
-
+            updated_parent = load_data(
+                data, partial=True, instance=parent
+            )  # ParentSchema for admin update
             db.session.commit()
-            current_app.logger.info(
-                f"Parent updated successfully by admin for ID: {parent_id}"
-            )
-
-            parent_resp_data = dump_data(updated_parent)
-            resp = message(True, "Parent updated successfully by admin.")
-            resp["parent"] = parent_resp_data
-            return resp, 200
-
+            return {
+                "status": True,
+                "message": "Parent updated successfully.",
+                "parent": dump_data(updated_parent),
+            }, 200
         except ValidationError as err:
             db.session.rollback()
-            current_app.logger.warning(
-                f"Schema validation error during admin update for parent {parent_id}: {err.messages}. Data: {data}"
-            )
             return validation_error(False, err.messages), 400
-        except IntegrityError as error:
-            db.session.rollback()
-            current_app.logger.warning(
-                f"Database integrity error during admin update for parent {parent_id}: {error}. Data: {data}",
-                exc_info=True,
-            )
-            return internal_err_resp()
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Database error during admin update for parent {parent_id}: {error}. Data: {data}",
-                exc_info=True,
-            )
-            return internal_err_resp()
         except Exception as error:
             db.session.rollback()
             current_app.logger.error(
-                f"Unexpected error during admin update for parent {parent_id}: {error}. Data: {data}",
-                exc_info=True,
+                f"Error updating parent {parent_id}: {error}", exc_info=True
             )
             return internal_err_resp()
 
     @staticmethod
     def update_own_profile(current_user_id: int, data: dict):
-        """Update the currently logged-in parent's own profile. Assumes @roles_required('parent') handled authorization."""
-        parent = Parent.query.get(current_user_id)
+        parent = Parent.query.filter_by(
+            id=current_user_id, archived=False
+        ).first()  # Can only update own non-archived profile
         if not parent:
-            current_app.logger.error(
-                f"Attempted self-update for non-existent parent ID: {current_user_id}. JWT might be invalid."
-            )
-            return err_resp("Parent profile not found.", "self_not_found", 404)
-
-        if not data:
-            current_app.logger.warning(
-                f"Attempted self-update for parent {current_user_id} with empty data."
-            )
             return err_resp(
-                "Request body cannot be empty for update.", "empty_update_data", 400
-            )
+                "Parent profile not found or is archived.",
+                "parent_profile_not_active",
+                403,
+            )  # 403 as they are authenticated but profile is non-interactive
+        if not data:
+            return err_resp("Request body cannot be empty.", "empty_update_data", 400)
+
+        data.pop("archived", None)
+        data.pop("email", None)
+        data.pop("password", None)
+        data.pop("is_email_verified", None)  # Cannot change verification status
+        data.pop("is_phone_verified", None)
 
         try:
-            from app.models.Schemas import ParentSchema
-
-            self_update_schema = ParentSchema(
-                partial=True,
-                exclude=(
-                    "id",
-                    "email",
-                    "password",
-                    "is_email_verified",
-                    "is_phone_verified",
-                    "created_at",
-                    "updated_at",
-                ),
-            )
-            updated_parent = self_update_schema.load(
-                data, instance=parent, partial=True
-            )
-
-            current_app.logger.debug(
-                f"Parent data validated by schema for self-update. Committing changes for ID: {current_user_id}"
-            )
-
+            updated_parent = load_data(
+                data, partial=True, instance=parent
+            )  # ParentSelfUpdateSchema
             db.session.commit()
-            current_app.logger.info(
-                f"Parent self-profile updated successfully for ID: {current_user_id}"
-            )
-
-            parent_resp_data = dump_data(updated_parent)
-            resp = message(True, "Your profile has been updated successfully.")
-            resp["parent"] = parent_resp_data
-            return resp, 200
-
+            return {
+                "status": True,
+                "message": "Profile updated successfully.",
+                "parent": dump_data(updated_parent),
+            }, 200
         except ValidationError as err:
             db.session.rollback()
-            current_app.logger.warning(
-                f"Schema validation error during self-update for parent {current_user_id}: {err.messages}. Data: {data}"
-            )
             return validation_error(False, err.messages), 400
-        except IntegrityError as error:
-            db.session.rollback()
-            current_app.logger.warning(
-                f"Database integrity error during self-update for parent {current_user_id}: {error}. Data: {data}",
-                exc_info=True,
-            )
-            return internal_err_resp()
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Database error during self-update for parent {current_user_id}: {error}. Data: {data}",
-                exc_info=True,
-            )
-            return internal_err_resp()
         except Exception as error:
             db.session.rollback()
             current_app.logger.error(
-                f"Unexpected error during self-update for parent {current_user_id}: {error}. Data: {data}",
-                exc_info=True,
+                f"Error parent self-update {current_user_id}: {error}", exc_info=True
             )
             return internal_err_resp()
 
     @staticmethod
-    def delete_parent(parent_id: int):
-        """Delete a parent by ID. Assumes @roles_required('admin') handled authorization."""
+    def archive_parent(parent_id: int):
+        """Archive a parent and all their associated active students."""
         parent = Parent.query.get(parent_id)
         if not parent:
-            current_app.logger.info(
-                f"Attempted admin delete for non-existent parent ID: {parent_id}"
-            )
             return err_resp("Parent not found!", "parent_404", 404)
 
+        if parent.archived:
+            # If parent is already archived, ensure all their students are also archived.
+            # This handles cases where a student might have been unarchived independently.
+            archived_student_count_during_recheck = 0
+            if isinstance(parent.students, AppenderQuery):  # Check if lazy="dynamic"
+                for student in parent.students.filter_by(archived=False).all():
+                    student.archived = True
+                    archived_student_count_during_recheck += 1
+            else:  # Fallback for non-dynamic (InstrumentedList)
+                for student in parent.students:
+                    if not student.archived:
+                        student.archived = True
+                        archived_student_count_during_recheck += 1
+
+            if archived_student_count_during_recheck > 0:
+                db.session.commit()
+                current_app.logger.info(
+                    f"{archived_student_count_during_recheck} active student(s) of already archived parent {parent_id} were also archived."
+                )
+                msg = f"Parent is already archived. {archived_student_count_during_recheck} associated active student(s) have now also been archived."
+            else:
+                msg = "Parent is already archived. No active students found to re-archive."
+
+            return {"status": True, "message": msg, "parent": dump_data(parent)}, 200
+
         try:
-            current_app.logger.warning(
-                f"Attempting admin delete for parent {parent_id}. THIS WILL CASCADE DELETE associated students, fees, notifications, etc."
-            )
+            parent.archived = True
+            current_app.logger.info(f"Parent {parent_id} marked as archived.")
 
-            db.session.delete(parent)
+            archived_student_count = 0
+            # Check if parent.students is a dynamic relationship (AppenderQuery)
+            if isinstance(parent.students, AppenderQuery):
+                students_to_archive = parent.students.filter_by(archived=False).all()
+                for student in students_to_archive:
+                    student.archived = True
+                    archived_student_count += 1
+                    current_app.logger.info(
+                        f"Cascaded archive to student ID: {student.id} (child of parent {parent_id})"
+                    )
+            else:  # Fallback for non-dynamic (InstrumentedList) - less efficient for large numbers
+                current_app.logger.warning(
+                    f"Parent.students relationship for parent {parent_id} is not lazy='dynamic'. Iterating list for cascade archive."
+                )
+                for student in parent.students:
+                    if not student.archived:
+                        student.archived = True
+                        archived_student_count += 1
+                        current_app.logger.info(
+                            f"Cascaded archive to student ID: {student.id} (child of parent {parent_id})"
+                        )
+
             db.session.commit()
-
-            current_app.logger.info(
-                f"Parent {parent_id} and associated data deleted successfully by admin."
-            )
-            return None, 204
-
-        except SQLAlchemyError as error:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Database error during admin delete for parent {parent_id}: {error}",
-                exc_info=True,
-            )
-            return err_resp(
-                f"Could not delete parent due to a database constraint or error.",
-                "delete_error_db",
-                500,
-            )
+            msg = f"Parent and {archived_student_count} associated student(s) archived successfully."
+            current_app.logger.info(msg)
+            return {"status": True, "message": msg, "parent": dump_data(parent)}, 200
         except Exception as error:
             db.session.rollback()
             current_app.logger.error(
-                f"Unexpected error during admin delete for parent {parent_id}: {error}",
-                exc_info=True,
+                f"Error archiving parent {parent_id}: {error}", exc_info=True
+            )
+            return internal_err_resp()
+
+    @staticmethod
+    def unarchive_parent(parent_id: int):
+        """Unarchive a parent. Does NOT automatically unarchive students."""
+        parent = Parent.query.get(parent_id)
+        if not parent:
+            return err_resp("Parent not found!", "parent_404", 404)
+
+        if not parent.archived:
+            return {
+                "status": True,
+                "message": "Parent is already active.",
+                "parent": dump_data(parent),
+            }, 200
+
+        try:
+            existing_active_parent = Parent.query.filter(
+                Parent.email == parent.email,
+                Parent.archived == False,
+                Parent.id != parent_id,
+            ).first()
+            if existing_active_parent:
+                return err_resp(
+                    f"Cannot unarchive. Email '{parent.email}' is already in use by an active parent.",
+                    "email_conflict_unarchive",
+                    409,
+                )
+
+            parent.archived = False
+            db.session.commit()
+            current_app.logger.info(f"Parent unarchived successfully: ID {parent_id}")
+            return {
+                "status": True,
+                "message": "Parent unarchived successfully. Associated students remain archived if they were archived.",
+                "parent": dump_data(parent),
+            }, 200
+        except Exception as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Error unarchiving parent {parent_id}: {error}", exc_info=True
+            )
+            return internal_err_resp()
+
+    @staticmethod
+    def unarchive_parent(parent_id: int):
+        """Unarchive a parent. Does NOT automatically unarchive students."""
+        parent = Parent.query.get(parent_id)
+        if not parent:
+            return err_resp("Parent not found!", "parent_404", 404)
+
+        if not parent.archived:
+            return {
+                "status": True,
+                "message": "Parent is already active.",
+                "parent": dump_data(parent),
+            }, 200
+
+        try:
+            # Check for email conflict with another active parent before unarchiving
+            # This is a safety measure, though unique constraint should handle it.
+            existing_active_parent = Parent.query.filter(
+                Parent.email == parent.email,
+                Parent.archived == False,
+                Parent.id != parent_id,
+            ).first()
+            if existing_active_parent:
+                return err_resp(
+                    f"Cannot unarchive. Email '{parent.email}' is already in use by an active parent.",
+                    "email_conflict_unarchive",
+                    409,
+                )
+
+            parent.archived = False
+            # Students are NOT automatically unarchived here.
+            # Admin must unarchive students individually if desired.
+            db.session.commit()
+            current_app.logger.info(f"Parent unarchived successfully: ID {parent_id}")
+            return {
+                "status": True,
+                "message": "Parent unarchived successfully. Associated students remain archived if they were archived.",
+                "parent": dump_data(parent),
+            }, 200
+        except Exception as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Error unarchiving parent {parent_id}: {error}", exc_info=True
             )
             return internal_err_resp()

@@ -3,14 +3,29 @@ from flask_restx.reqparse import RequestParser
 
 
 class TeacherDto:
-    """Data Transfer Objects and Request Parsers for the Teacher API."""  # Updated docstring
+    """Data Transfer Objects and Request Parsers for the Teacher API."""
 
-    # Define the namespace
     api = Namespace("teachers", description="Teacher related operations.")
 
-    # --- Parser for Query Parameters (Admin list view - Filters and Pagination) ---
     teacher_filter_parser = RequestParser(bundle_errors=True)
-    teacher_filter_parser.add_argument(  # Added page
+    # Removed specialization_id filter
+    teacher_filter_parser.add_argument(
+        "module_id",
+        type=int,
+        location="args",
+        required=False,
+        help="Filter teachers by module ID they are assigned to.",
+    )
+    teacher_filter_parser.add_argument(
+        "archived",
+        type=int,
+        location="args",
+        required=False,
+        default=0,
+        choices=(0, 1),
+        help="Filter teachers by archived status (1 for archived, 0 for not archived. Default: 0).",
+    )
+    teacher_filter_parser.add_argument(
         "page",
         type=int,
         location="args",
@@ -18,7 +33,7 @@ class TeacherDto:
         default=1,
         help="Page number for pagination (default: 1).",
     )
-    teacher_filter_parser.add_argument(  # Added per_page
+    teacher_filter_parser.add_argument(
         "per_page",
         type=int,
         location="args",
@@ -27,44 +42,23 @@ class TeacherDto:
         help="Number of items per page (default: 10).",
     )
 
-    # Define the core 'teacher' object model (excluding password)
     teacher = api.model(
         "Teacher Object",
         {
-            "id": fields.Integer(
-                readonly=True, description="Teacher unique identifier"
-            ),
-            "first_name": fields.String(
-                required=False, description="Teacher's first name"
-            ),  # Optional
-            "last_name": fields.String(
-                required=False, description="Teacher's last name"
-            ),  # Optional
-            "email": fields.String(
-                required=True, description="Teacher's unique email address"
-            ),
-            "phone_number": fields.String(
-                required=True, description="Teacher's phone number"
-            ),
-            "address": fields.String(
-                required=False, description="Teacher's address"
-            ),  # Optional
-            "profile_picture": fields.String(
-                required=False, description="URL to teacher's profile picture"
-            ),  # Optional
-            
-            "created_at": fields.DateTime(
-                readonly=True, description="Timestamp of teacher record creation (UTC)"
-            ),  # Added UTC
-            "updated_at": fields.DateTime(
-                readonly=True,
-                description="Timestamp of last teacher record update (UTC)",
-            ),  # Added UTC
-            # Could add module names/ids or session counts if needed via service layer enrichment
+            "id": fields.Integer(readonly=True, description="Teacher unique identifier"),
+            "first_name": fields.String(required=False, description="Teacher's first name"),
+            "last_name": fields.String(required=False, description="Teacher's last name"),
+            "email": fields.String(required=True, description="Teacher's unique email address"),
+            "phone_number": fields.String(required=True, description="Teacher's phone number"),
+            "address": fields.String(required=False, description="Teacher's address"),
+            "profile_picture": fields.String(required=False, description="URL to teacher's profile picture"),
+            # Removed specialization_id and specialization_name
+            "archived": fields.Boolean(readonly=True, description="Indicates if the teacher account is archived"),
+            "created_at": fields.DateTime(readonly=True, description="Timestamp of teacher record creation (UTC)"),
+            "updated_at": fields.DateTime(readonly=True, description="Timestamp of last teacher record update (UTC)"),
         },
     )
 
-    # Standard response for a single teacher
     data_resp = api.model(
         "Teacher Data Response",
         {
@@ -74,21 +68,16 @@ class TeacherDto:
         },
     )
 
-    # Standard response for a list of teachers (includes pagination)
     list_data_resp = api.model(
         "Teacher List Response",
         {
             "status": fields.Boolean(description="Indicates success or failure"),
             "message": fields.String(description="Response message"),
-            # Updated description
             "teachers": fields.List(
                 fields.Nested(teacher),
                 description="List of teacher data for the current page",
             ),
-            # Pagination metadata fields
-            "total": fields.Integer(
-                description="Total number of teachers matching the query"
-            ),
+            "total": fields.Integer(description="Total number of teachers matching the query"),
             "pages": fields.Integer(description="Total number of pages"),
             "current_page": fields.Integer(description="The current page number"),
             "per_page": fields.Integer(description="Number of items per page"),
@@ -97,81 +86,40 @@ class TeacherDto:
         },
     )
 
-    # --- DTOs for POST/PUT ---
     teacher_create_input = api.model(
-        "Teacher Create Input (Admin)",  # Clarified title
+        "Teacher Create Input (Admin)",
         {
-            "email": fields.String(
-                required=True, description="Teacher's unique email address"
-            ),
-            "password": fields.String(
-                required=True,
-                description="Teacher's password (min length 8, will be hashed)",
-                min_length=8,
-            ),  # Added min_length
-            "phone_number": fields.String(
-                required=True, description="Teacher's phone number"
-            ),
-            "first_name": fields.String(
-                required=False, description="Teacher's first name"
-            ),  # Optional
-            "last_name": fields.String(
-                required=False, description="Teacher's last name"
-            ),  # Optional
-            "address": fields.String(
-                required=False, description="Teacher's address"
-            ),  # Optional
-            "profile_picture": fields.String(
-                required=False, description="URL to teacher's profile picture"
-            ),  # Optional
-            
+            "email": fields.String(required=True, description="Teacher's unique email address"),
+            "password": fields.String(required=True, description="Teacher's password (min length 8, will be hashed)", min_length=8),
+            "phone_number": fields.String(required=True, description="Teacher's phone number"),
+            "first_name": fields.String(required=False, description="Teacher's first name"),
+            "last_name": fields.String(required=False, description="Teacher's last name"),
+            "address": fields.String(required=False, description="Teacher's address"),
+            "profile_picture": fields.String(required=False, description="URL to teacher's profile picture"),
+            # Removed specialization_id
         },
     )
 
-    # DTO for ADMIN updating a teacher
     teacher_admin_update_input = api.model(
         "Teacher Admin Update Input",
         {
-            "first_name": fields.String(
-                required=False, description="Teacher's first name"
-            ),  # Optional
-            "last_name": fields.String(
-                required=False, description="Teacher's last name"
-            ),  # Optional
-            "phone_number": fields.String(
-                required=False, description="Teacher's phone number"
-            ),  # Optional
-            "address": fields.String(
-                required=False, description="Teacher's address"
-            ),  # Optional
-            "profile_picture": fields.String(
-                required=False, description="URL to teacher's profile picture"
-            ),  # Optional
-            
-            # Excludes email, password
+            "first_name": fields.String(required=False, description="Teacher's first name"),
+            "last_name": fields.String(required=False, description="Teacher's last name"),
+            "phone_number": fields.String(required=False, description="Teacher's phone number"),
+            "address": fields.String(required=False, description="Teacher's address"),
+            "profile_picture": fields.String(required=False, description="URL to teacher's profile picture"),
+            # Removed specialization_id
         },
     )
 
-    # DTO for TEACHER updating their OWN profile
     teacher_self_update_input = api.model(
         "Teacher Self Update Input",
         {
-            "first_name": fields.String(
-                required=False, description="Your first name"
-            ),  # Optional
-            "last_name": fields.String(
-                required=False, description="Your last name"
-            ),  # Optional
-            "phone_number": fields.String(
-                required=False, description="Your phone number"
-            ),  # Optional
-            "address": fields.String(
-                required=False, description="Your address"
-            ),  # Optional
-            "profile_picture": fields.String(
-                required=False, description="URL to your profile picture"
-            ),  # Optional
-            # Excludes email, password, module_key
-            # Password change should use a dedicated endpoint
+            "first_name": fields.String(required=False, description="Your first name"),
+            "last_name": fields.String(required=False, description="Your last name"),
+            "phone_number": fields.String(required=False, description="Your phone number"),
+            "address": fields.String(required=False, description="Your address"),
+            "profile_picture": fields.String(required=False, description="URL to your profile picture"),
+            # Removed specialization_id
         },
     )

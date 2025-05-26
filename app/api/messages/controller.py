@@ -105,7 +105,7 @@ class MessageList(Resource):
     @roles_required("parent", "teacher")  # Only participants can send messages
     # Use config for rate limit
     @limiter.limit(
-        lambda: current_app.config.get("RATE_LIMIT_MESSAGE_CREATE", "60/minute")
+        lambda: current_app.config.get("RATE_LIMIT_MESSAGE_CREATE", "36000/minute")
     )
     def post(self):
         """Send a new message to a chat"""

@@ -5,10 +5,8 @@ from flask_restx.reqparse import RequestParser
 class StudentDto:
     """Data Transfer Objects and Request Parsers for the Student API."""
 
-    # Define the namespace
     api = Namespace("students", description="Student related operations.")
 
-    # --- Parser for Query Parameters (Filters and Pagination) ---
     student_filter_parser = RequestParser(bundle_errors=True)
     student_filter_parser.add_argument(
         "level_id",
@@ -33,10 +31,19 @@ class StudentDto:
     )
     student_filter_parser.add_argument(
         "is_approved",
+        type=int,  # Assuming 0 for false, 1 for true as per your existing DTO
+        location="args",
+        required=False,
+        help="Filter students by their approval status (1 for true / 0 for false).",
+    )
+    student_filter_parser.add_argument(  # ADDED archived filter
+        "archived",
         type=int,
         location="args",
         required=False,
-        help="Filter students by their approval status (1(true)/0(false)).",
+        default=0,  # Default to showing non-archived students
+        choices=(0, 1),
+        help="Filter students by their archived status (1 for archived, 0 for not archived. Default: 0).",
     )
     student_filter_parser.add_argument(
         "page",
@@ -55,7 +62,6 @@ class StudentDto:
         help="Number of items per page (default: 10).",
     )
 
-    # Define the core 'student' object model (excluding password)
     student = api.model(
         "Student Object",
         {
@@ -82,6 +88,10 @@ class StudentDto:
                 readonly=True,
                 description="Indicates if the student account is approved by admin",
             ),
+            "archived": fields.Boolean(  # ADDED archived field to response
+                readonly=True,
+                description="Indicates if the student account is archived",
+            ),
             "parent_id": fields.Integer(
                 required=True, readonly=True, description="ID of the student's parent"
             ),
@@ -99,7 +109,6 @@ class StudentDto:
         },
     )
 
-    # Standard response for a single student
     data_resp = api.model(
         "Student Data Response",
         {
@@ -109,7 +118,6 @@ class StudentDto:
         },
     )
 
-    # Generic success message response (can be reused)
     message_resp = api.model(
         "Message Response",
         {
@@ -118,7 +126,6 @@ class StudentDto:
         },
     )
 
-    # Standard response for a list of students (includes pagination)
     list_data_resp = api.model(
         "Student List Response",
         {
@@ -139,9 +146,8 @@ class StudentDto:
         },
     )
 
-    # --- DTOs for POST/PUT/PATCH ---
     student_create_input = api.model(
-        "Student Create Input (Admin)",  # Clarified Admin role
+        "Student Create Input (Admin)",
         {
             "email": fields.String(
                 required=True, description="Student's unique email address"
@@ -166,10 +172,10 @@ class StudentDto:
             "docs_url": fields.String(
                 required=False, description="URL to student documents, optional"
             ),
+            # 'archived' is not set on creation, defaults to False in model
         },
     )
 
-    # --- NEW DTO for Parent adding a child ---
     student_add_child_input = api.model(
         "Student Add Child Input (Parent)",
         {
@@ -185,9 +191,7 @@ class StudentDto:
             ),
         },
     )
-    # -----------------------------------------
 
-    # DTO for updating a student (limited fields, Admin only)
     student_update_input = api.model(
         "Student Update Input (Admin)",
         {
@@ -207,19 +211,23 @@ class StudentDto:
             "docs_url": fields.String(
                 required=False, description="New URL for student documents"
             ),
+            # 'archived' status is typically not updated via general update, but via a specific archive/unarchive or delete (soft delete) endpoint.
         },
     )
     student_complete_child_reg_input = api.model(
         "Student Complete Child Registration Input",
         {
-            "token": fields.String(required=True, description="The registration token received via email."),
-            "password": fields.String(required=True, description="The desired password for the student account (min 8 chars).", min_length=8),
-        }
+            "token": fields.String(
+                required=True, description="The registration token received via email."
+            ),
+            "password": fields.String(
+                required=True,
+                description="The desired password for the student account (min 8 chars).",
+                min_length=8,
+            ),
+        },
     )
-    # -----------------------------------------------
 
-
-    # DTO specifically for admin updating approval status
     student_approval_input = api.model(
         "Student Approval Input (Admin)",
         {
