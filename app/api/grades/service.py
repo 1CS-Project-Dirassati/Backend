@@ -1,411 +1,617 @@
+# Added current_app
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from marshmallow import ValidationError
+
+# Import eager loading strategy if needed
 from sqlalchemy.orm import joinedload
 
+# Import DB instance and models
 from app import db
+
+# Import related models needed for checks and context
 from app.models import Note, Student, Module, Teacher, Parent
-# Import the NotificationTriggerService and NotificationType Enum
-from app.services.notification_trigger_service import NotificationTriggerService
-try:
-    from app.models import NotificationType # Your Enum for notification types
-except ImportError:
-    NotificationType = None
-    current_app.logger.warning("NotificationType enum not found. Notification types will be strings.")
 
-
+# Import shared utilities
 from app.utils import (
     err_resp,
     message,
     internal_err_resp,
     validation_error,
 )
+
+# Import serialization/deserialization utilities from local utils.py
 from .utils import dump_data, load_data
 
 
 class NoteService:
 
+    # --- Helper for Foreign Key Validation ---
     @staticmethod
-    def _validate_foreign_keys(data: dict):
+    def _validate_foreign_keys(data: dict):  # Added type hint
+        """Check if related entities referenced in data exist. Returns dict of errors."""
         errors = {}
-        student_id_val = data.get("student_id")
-        if student_id_val is not None:
-            student = Student.query.get(student_id_val)
-            if not student:
-                errors["student_id"] = f"Student with ID {student_id_val} not found."
-            elif student.archived: # Prevent notes for archived students
-                 errors["student_id"] = f"Student with ID {student_id_val} is archived and cannot receive notes."
-
+        if data.get("student_id") is not None:
+            if not Student.query.get(data["student_id"]):
+                errors["student_id"] = (
+                    f"Student with ID {data['student_id']} not found."
+                )
         if data.get("module_id") is not None:
             if not Module.query.get(data["module_id"]):
                 errors["module_id"] = f"Module with ID {data['module_id']} not found."
+        # teacher_id is handled during creation based on role/context
         return errors
 
+    # --- GET Single ---
     @staticmethod
+    # Add type hints
     def get_note_data(note_id: int, current_user_id: int, current_user_role: str):
+        """Get note data by ID, with record-level authorization check"""
+        # Eager load related data for context and auth checks
         note = Note.query.options(
-            joinedload(Note.student).joinedload(Student.parent),
+            joinedload(Note.student).joinedload(
+                Student.parent
+            ),  # Load student and their parent
             joinedload(Note.module),
-            joinedload(Note.teacher).joinedload(Teacher.user) # Assuming teacher name is on User model
+            joinedload(Note.teacher),
         ).get(note_id)
 
         if not note:
+            current_app.logger.info(f"Note with ID {note_id} not found.")  # Add logging
             return err_resp("Note not found!", "note_404", 404)
 
+        # --- Record-Level Authorization Check ---
         can_access = False
-        if current_user_role == "admin": can_access = True
-        elif current_user_role == "teacher" and note.teacher_id == int(current_user_id): can_access = True
-        elif current_user_role == "student" and note.student_id == int(current_user_id): can_access = True
-        elif current_user_role == "parent" and note.student and note.student.parent_id == int(current_user_id): can_access = True
+        log_reason = ""
+        if current_user_role == "admin":
+            can_access = True
+            log_reason = "User is admin."
+        elif current_user_role == "teacher" and note.teacher_id == int(current_user_id):
+            can_access = True
+            log_reason = "User is the teacher who created the note."
+        elif current_user_role == "student" and note.student_id == int(current_user_id):
+            can_access = True
+            log_reason = "User is the student associated with the note."
+        # Check parent access using the eager-loaded student.parent_id
+        elif (
+            current_user_role == "parent"
+            and note.student
+            and note.student.parent_id == int(current_user_id)
+        ):
+            can_access = True
+            log_reason = "User is the parent of the student associated with the note."
 
         if not can_access:
-            return err_resp("Forbidden: You do not have permission to access this note.", "record_access_denied", 403)
+            current_app.logger.warning(
+                f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to access note {note_id}."
+            )  # Add logging
+            return err_resp(
+                "Forbidden: You do not have permission to access this note.",
+                "record_access_denied",
+                403,
+            )
+        current_app.logger.debug(
+            f"Record access granted for user {current_user_id} to note {note_id}. Reason: {log_reason}"
+        )  # Add logging
 
         try:
+            # Use dump_data for serialization
             note_data = dump_data(note)
+
+            # Add names to the response
             if note.student:
-                student_user = getattr(note.student, 'user', None) # Assuming Student has a 'user' relationship for name parts
-                first_name = getattr(student_user or note.student, 'first_name', '')
-                last_name = getattr(student_user or note.student, 'last_name', '')
-                note_data["student_name"] = f"{first_name} {last_name}".strip()
+                note_data["student_name"] = (
+                    f"{note.student.first_name} {note.student.last_name}"
+                )
             if note.module:
                 note_data["module_name"] = note.module.name
-            if note.teacher and hasattr(note.teacher, 'user') and note.teacher.user: # Check if teacher.user exists
-                note_data["teacher_name"] = f"{note.teacher.user.first_name} {note.teacher.user.last_name}".strip()
-            elif note.teacher: # Fallback if teacher name parts are directly on Teacher model
-                 note_data["teacher_name"] = f"{note.teacher.first_name} {note.teacher.last_name}".strip()
-
+            if note.teacher:
+                note_data["teacher_name"] = (
+                    f"{note.teacher.first_name} {note.teacher.last_name}"
+                )
 
             resp = message(True, "Note data sent successfully")
             resp["note"] = note_data
+            current_app.logger.debug(
+                f"Successfully retrieved note ID {note_id}"
+            )  # Add logging
             return resp, 200
         except Exception as error:
-            current_app.logger.error(f"Error serializing note data for ID {note_id}: {error}", exc_info=True)
+            current_app.logger.error(
+                f"Error serializing note data for ID {note_id}: {error}",  # Update log message
+                exc_info=True,
+            )
             return internal_err_resp()
 
+    # --- GET List with Filters, Pagination & Authorization ---
     @staticmethod
     def get_all_notes(
-        student_id=None, module_id=None, teacher_id=None, group_id=None,
-        type=None, # 'type' is the filter key from DTO
-        page=None, per_page=None,
-        current_user_id=None, current_user_role=None,
+        student_id=None,
+        module_id=None,
+        teacher_id=None,
+        group_id=None,
+        type=None,
+        page=None,
+        per_page=None,
+        current_user_id=None,
+        current_user_role=None,
     ):
+        """Get a paginated list of notes, filtered, with role-based data scoping"""
         page = page or 1
         per_page = per_page or 10
+
         try:
+            # Eager load student and parent for efficient parent filtering
             query = Note.query.options(
                 joinedload(Note.student).joinedload(Student.parent),
                 joinedload(Note.module),
-                joinedload(Note.teacher).joinedload(Teacher.user) # Assuming teacher name is on User model
+                joinedload(Note.teacher),
             )
 
+            child_ids_for_parent = []  # Store child IDs if user is parent
+
+            # --- Role-Based Data Scoping (Applied first) ---
             if current_user_role == "student":
+                current_app.logger.debug(
+                    f"Scoping notes list for student ID: {current_user_id}"
+                )
                 query = query.filter(Note.student_id == int(current_user_id))
+                student_id = current_user_id  # Force student_id filter
+                # Ignore other potentially passed filters
+                module_id = teacher_id = group_id = None
             elif current_user_role == "parent":
-                parent = Parent.query.get(current_user_id)
-                if not parent: return message(True, "Parent profile not found.") | {"notes": [], "total": 0, "pages": 0, "current_page": page, "per_page": per_page, "has_next": False, "has_prev": False}, 200
-                child_ids = [s.id for s in parent.students if not s.archived]
-                if not child_ids: return message(True, "No active students for parent.") | {"notes": [], "total": 0, "pages": 0, "current_page": page, "per_page": per_page, "has_next": False, "has_prev": False}, 200
-                if student_id is not None and int(student_id) not in child_ids:
-                    return err_resp("Forbidden: Can only filter by your own active children.", "parent_filter_denied", 403)
-                query = query.filter(Note.student_id.in_(child_ids))
-                if student_id is not None: query = query.filter(Note.student_id == int(student_id))
+                # Find the parent's children IDs using the user_id (which IS the parent.id)
+                parent = Parent.query.options(joinedload(Parent.students)).get(
+                    current_user_id
+                )
+                if not parent:
+                    current_app.logger.error(
+                        f"Parent profile not found for user ID {current_user_id} during note listing."
+                    )
+                    return (
+                        message(True, "Parent profile not found, cannot list notes.")
+                        | {
+                            "notes": [],
+                            "total": 0,
+                            "pages": 0,
+                            "current_page": 1,
+                            "per_page": per_page,
+                            "has_next": False,
+                            "has_prev": False,
+                        },
+                        200,
+                    )
 
+                child_ids_for_parent = [student.id for student in parent.students]
+                if not child_ids_for_parent:
+                    current_app.logger.debug(
+                        f"Parent {current_user_id} has no students linked."
+                    )
+                    return (
+                        message(True, "No students found for this parent.")
+                        | {
+                            "notes": [],
+                            "total": 0,
+                            "pages": 0,
+                            "current_page": 1,
+                            "per_page": per_page,
+                            "has_next": False,
+                            "has_prev": False,
+                        },
+                        200,
+                    )
+
+                current_app.logger.debug(
+                    f"Scoping notes list for parent ID: {current_user_id}, Children IDs: {child_ids_for_parent}"
+                )
+                query = query.filter(Note.student_id.in_(child_ids_for_parent))
+
+                # Validate student_id filter if provided by parent
+                if student_id is not None and student_id not in child_ids_for_parent:
+                    current_app.logger.warning(
+                        f"Parent {current_user_id} attempted to filter notes by non-child student ID {student_id}."
+                    )
+                    return err_resp(
+                        f"Forbidden: You can only filter by your own children's student IDs.",
+                        "parent_filter_denied",
+                        403,
+                    )
+                # Ignore teacher_id filter for parents
+                teacher_id = None
             elif current_user_role == "teacher":
+                # Simple approach: Only show notes they created
+                current_app.logger.debug(
+                    f"Scoping notes list for teacher ID: {current_user_id}"
+                )
                 query = query.filter(Note.teacher_id == int(current_user_id))
+                teacher_id = current_user_id  # Force teacher_id filter
+                # Allow filtering by student/module within their own notes
+            # Admins see all - apply standard filters below
 
-            # Standard filters (apply if not overridden by role logic or if admin)
-            if student_id is not None and current_user_role not in ["student", "parent"]: # Parent handled above
+            # --- Apply Standard Filters (respecting role scoping) ---
+            filters_applied = {}
+            if student_id is not None:
+                filters_applied["student_id"] = student_id
                 query = query.filter(Note.student_id == student_id)
             if module_id is not None:
+                filters_applied["module_id"] = module_id
                 query = query.filter(Note.module_id == module_id)
-            if teacher_id is not None and current_user_role == "admin": # Only admin can use teacher_id filter freely
+            if teacher_id is not None and current_user_role == "admin":
+                filters_applied["teacher_id"] = teacher_id
                 query = query.filter(Note.teacher_id == teacher_id)
-            if group_id is not None: # Ensure student is loaded for this join
+            if group_id is not None:
+                filters_applied["group_id"] = group_id
                 query = query.join(Note.student).filter(Student.group_id == group_id)
-
-            if type is not None: # 'type' is the filter key from DTO
+            if type is not None:
                 try:
-                    from app.models.Note import NoteType as NoteModelTypeEnum # Specific import for enum
-                    note_type_enum_val = NoteModelTypeEnum(type.lower())
-                    query = query.filter(Note.type == note_type_enum_val)
+                    from app.models.Note import NoteType
+
+                    note_type = NoteType(type)
+                    filters_applied["type"] = type
+                    query = query.filter(Note.type == note_type)
                 except ValueError:
-                    return err_resp("Invalid note type filter. Must be one of: cc, exam1, exam2.", "invalid_note_type_filter", 400)
-                except ImportError:
-                     current_app.logger.warning("NoteType enum for filtering not found in app.models.Note.")
+                    current_app.logger.warning(f"Invalid note type filter: {type}")
+                    return err_resp(
+                        "Invalid note type. Must be one of: cc, exam1, exam2.",
+                        "invalid_note_type",
+                        400,
+                    )
 
+            if filters_applied:
+                current_app.logger.debug(
+                    f"Applying note list filters: {filters_applied}"
+                )
 
+            # Add ordering
             query = query.order_by(Note.created_at.desc())
-            paginated_notes = query.paginate(page=page, per_page=per_page, error_out=False)
 
-            notes_list_data = []
-            for note_obj in paginated_notes.items:
-                item_data = dump_data(note_obj)
-                if note_obj.student:
-                    student_user = getattr(note_obj.student, 'user', None)
-                    first_name = getattr(student_user or note_obj.student, 'first_name', '')
-                    last_name = getattr(student_user or note_obj.student, 'last_name', '')
-                    item_data["student_name"] = f"{first_name} {last_name}".strip()
-                if note_obj.module:
-                    item_data["module_name"] = note_obj.module.name
-                if note_obj.teacher and hasattr(note_obj.teacher, 'user') and note_obj.teacher.user:
-                    item_data["teacher_name"] = f"{note_obj.teacher.user.first_name} {note_obj.teacher.user.last_name}".strip()
-                elif note_obj.teacher:
-                     item_data["teacher_name"] = f"{note_obj.teacher.first_name} {note_obj.teacher.last_name}".strip()
-                notes_list_data.append(item_data)
+            # Implement pagination
+            current_app.logger.debug(
+                f"Paginating notes: page={page}, per_page={per_page}"
+            )
+            paginated_notes = query.paginate(
+                page=page, per_page=per_page, error_out=False
+            )
+            current_app.logger.debug(
+                f"Paginated notes items count: {len(paginated_notes.items)}"
+            )
 
+            # Serialize results using dump_data
+            notes_data = dump_data(paginated_notes.items, many=True)
+
+            # Add names to each note
+            for note_data in notes_data:
+                note = next(
+                    (n for n in paginated_notes.items if n.id == note_data["id"]), None
+                )
+                if note:
+                    if note.student:
+                        note_data["student_name"] = (
+                            f"{note.student.first_name} {note.student.last_name}"
+                        )
+                    if note.module:
+                        note_data["module_name"] = note.module.name
+                    if note.teacher:
+                        note_data["teacher_name"] = (
+                            f"{note.teacher.first_name} {note.teacher.last_name}"
+                        )
+
+            current_app.logger.debug(f"Serialized {len(notes_data)} notes")
             resp = message(True, "Notes list retrieved successfully")
-            resp.update({
-                "notes": notes_list_data, "total": paginated_notes.total, "pages": paginated_notes.pages,
-                "current_page": paginated_notes.page, "per_page": paginated_notes.per_page,
-                "has_next": paginated_notes.has_next, "has_prev": paginated_notes.has_prev
-            })
+            resp["notes"] = notes_data
+            resp["total"] = paginated_notes.total
+            resp["pages"] = paginated_notes.pages
+            resp["current_page"] = paginated_notes.page
+            resp["per_page"] = paginated_notes.per_page
+            resp["has_next"] = paginated_notes.has_next
+            resp["has_prev"] = paginated_notes.has_prev
+
+            current_app.logger.debug(
+                f"Successfully retrieved notes page {page}. Total: {paginated_notes.total}"
+            )
             return resp, 200
+
         except Exception as error:
-            current_app.logger.error(f"Error getting notes list (role: {current_user_role}): {error}", exc_info=True)
+            log_msg = f"Error getting notes list (role: {current_user_role})"
+            if page:
+                log_msg += f", page {page}"
+            current_app.logger.error(f"{log_msg}: {error}", exc_info=True)
             return internal_err_resp()
 
+    # --- CREATE (Teacher/Admin) ---
     @staticmethod
+    # Add type hints
     def create_note(data: dict, current_user_id: int, current_user_role: str):
+        """Create a new note (grade). Assumes @roles_required handled base role."""
         try:
+            # 1. Schema Validation & Deserialization
+            from app.models.Schemas import NoteSchema
+            from app.models.Note import NoteType
+
+            note_create_schema = NoteSchema()
+
+            current_app.logger.debug(
+                f"Note data validated by schema. Proceeding with FK checks."
+            )
+
+            # 2. Foreign Key Validation
             fk_errors = NoteService._validate_foreign_keys(data)
             if fk_errors:
+                current_app.logger.warning(
+                    f"Foreign key validation failed creating note: {fk_errors}. Data: {data}"
+                )
                 return validation_error(False, fk_errors), 400
 
+            # 3. Determine Teacher ID & Perform Authorization/Business Logic
             teacher_id_to_assign = None
             if current_user_role == "teacher":
                 teacher_id_to_assign = current_user_id
-            elif current_user_role == "admin": # Admin creating a note needs to be a teacher
-                admin_as_teacher = Teacher.query.get(current_user_id)
-                if not admin_as_teacher:
-                    return err_resp("Admin creating note must also have a Teacher profile.", "admin_not_teacher_for_note", 403)
+                current_app.logger.debug(
+                    f"Assigning teacher ID {teacher_id_to_assign} based on logged-in teacher."
+                )
+            elif current_user_role == "admin":
                 teacher_id_to_assign = current_user_id
+                if not Teacher.query.get(teacher_id_to_assign):
+                    current_app.logger.error(
+                        f"Admin user ID {current_user_id} not found in Teacher table. Cannot assign note."
+                    )
+                    return err_resp(
+                        "Admin user is not registered as a teacher, cannot create note.",
+                        "admin_not_teacher",
+                        400,
+                    )
+                current_app.logger.debug(
+                    f"Assigning teacher ID {teacher_id_to_assign} based on logged-in admin."
+                )
 
             if teacher_id_to_assign is None:
-                 return err_resp("Could not determine teacher for note.", "teacher_determination_failed", 500)
+                current_app.logger.error(
+                    "Failed to determine teacher ID for note creation."
+                )
+                return internal_err_resp()
 
-
+            # 4. Validate Grade Value (e.g., 0-20)
             grade_value = data["value"]
-            MIN_GRADE, MAX_GRADE = 0, 20 # Define or get from config
+            MIN_GRADE, MAX_GRADE = 0, 20
             if not (MIN_GRADE <= grade_value <= MAX_GRADE):
-                return err_resp(f"Invalid grade value. Must be between {MIN_GRADE} and {MAX_GRADE}.", "invalid_grade_value", 400)
+                current_app.logger.warning(
+                    f"Invalid grade value received: {grade_value}. Data: {data}"
+                )
+                return err_resp(
+                    f"Invalid grade value. Must be between {MIN_GRADE} and {MAX_GRADE}.",
+                    "invalid_grade_value",
+                    400,
+                )
 
+            # 5. Validate Note Type
             try:
-                from app.models.Note import NoteType as NoteModelTypeEnum # Specific import
-                note_type_enum_val = NoteModelTypeEnum(data["type"].lower())
+                note_type = NoteType(data["type"])
             except ValueError:
-                return err_resp("Invalid note type. Must be one of: cc, exam1, exam2.", "invalid_note_type_create", 400)
-            except ImportError:
-                current_app.logger.error("NoteType enum for creation not found in app.models.Note.")
-                return internal_err_resp(message="Server configuration error for note types.")
+                current_app.logger.warning(
+                    f"Invalid note type received: {data['type']}. Data: {data}"
+                )
+                return err_resp(
+                    "Invalid note type. Must be one of: cc, exam1, exam2.",
+                    "invalid_note_type",
+                    400,
+                )
 
-
-            # Check for existing note (student_id, module_id, type)
-            existing_note = Note.query.filter_by(
-                student_id=data["student_id"],
-                module_id=data["module_id"],
-                type=note_type_enum_val # Use the enum value for query
-            ).first()
-            if existing_note:
-                return err_resp(f"A '{data['type']}' note already exists for this student in this module.", "duplicate_note_type", 409)
-
-
+            # 6. Create Instance & Commit
             new_note = Note(
                 student_id=data["student_id"],
                 module_id=data["module_id"],
                 teacher_id=teacher_id_to_assign,
-                value=grade_value,
-                type=note_type_enum_val, # Store the enum member
-                comment=data.get("comment")
+                value=data["value"],
+                type=note_type,
+                comment=data.get("comment"),
             )
 
             db.session.add(new_note)
             db.session.commit()
-            current_app.logger.info(f"Note (ID: {new_note.id}) created by {current_user_role} {current_user_id}")
+            current_app.logger.info(
+                f"Note created successfully with ID: {new_note.id} by Teacher/Admin ID: {teacher_id_to_assign}"
+            )
 
-            # --- Trigger Notifications ---
-            student_obj = Student.query.options(joinedload(Student.user), joinedload(Student.parent)).get(new_note.student_id)
-            module_obj = Module.query.get(new_note.module_id)
-
-            if student_obj and module_obj:
-                student_name = f"{getattr(student_obj.user, 'first_name', '')} {getattr(student_obj.user, 'last_name', '')}".strip() or "the student"
-                module_name_str = module_obj.name
-                note_value_str = str(new_note.value)
-                note_type_str = new_note.type.value # Get string value from enum
-
-                common_link = f"/grades/student/{student_obj.id}" # Example link
-
-                # Notification for Student
-                student_message = f"You received a new grade of {note_value_str} ({note_type_str}) in {module_name_str}."
-                NotificationTriggerService.trigger_notification(
-                    recipient_type="student",
-                    recipient_id=student_obj.id, # student_obj.id is the student's own primary key
-                    message=student_message,
-                    notification_type_value=NotificationType.GRADE.value if NotificationType else "grade",
-                    link=common_link
-                )
-
-                # Notification for Parent (if exists and not archived)
-                if student_obj.parent and not student_obj.parent.archived:
-                    parent_message = f"Your child, {student_name}, received a new grade of {note_value_str} ({note_type_str}) in {module_name_str}."
-                    NotificationTriggerService.trigger_notification(
-                        recipient_type="parent",
-                        recipient_id=student_obj.parent_id,
-                        message=parent_message,
-                        notification_type_value=NotificationType.GRADE.value if NotificationType else "grade",
-                        link=common_link # Or a parent-specific link
-                    )
-            # --- End Trigger Notifications ---
-
-            # For the API response, reload the note with all necessary joins for consistent output
-            # This is important if the schema methods rely on these relationships.
-            db.session.refresh(new_note) # Refresh to ensure all attributes are up-to-date
-            # Or, query again with all joins if schema needs them:
-            response_note = Note.query.options(
-                joinedload(Note.student).joinedload(Student.user),
-                joinedload(Note.student).joinedload(Student.parent),
-                joinedload(Note.module),
-                joinedload(Note.teacher).joinedload(Teacher.user)
-            ).get(new_note.id)
-
-            note_resp_data = dump_data(response_note if response_note else new_note)
-            # Manually add names if schema doesn't do it or if joins weren't perfect for dump_data context
-            if response_note:
-                if response_note.student:
-                    s_user = getattr(response_note.student, 'user', None)
-                    s_fn = getattr(s_user or response_note.student, 'first_name', '')
-                    s_ln = getattr(s_user or response_note.student, 'last_name', '')
-                    note_resp_data["student_name"] = f"{s_fn} {s_ln}".strip()
-                if response_note.module:
-                    note_resp_data["module_name"] = response_note.module.name
-                if response_note.teacher and hasattr(response_note.teacher, 'user') and response_note.teacher.user:
-                    note_resp_data["teacher_name"] = f"{response_note.teacher.user.first_name} {response_note.teacher.user.last_name}".strip()
-                elif response_note.teacher:
-                     note_resp_data["teacher_name"] = f"{response_note.teacher.first_name} {response_note.teacher.last_name}".strip()
-
-
+            # 7. Serialize & Respond using dump_data
+            note_resp_data = dump_data(new_note)
             resp = message(True, "Note created successfully.")
             resp["note"] = note_resp_data
             return resp, 201
 
         except ValidationError as err:
-            db.session.rollback(); return validation_error(False, err.messages), 400
-        except IntegrityError as e:
             db.session.rollback()
-            # Check if it's the unique constraint for (student_id, module_id, type)
-            # The name of this constraint depends on how it was defined in your Note model.
-            # Example: if 'uq_student_module_type' in str(e.orig):
-            #    return err_resp(f"A '{data.get('type')}' note already exists for this student in this module.", "duplicate_note_type", 409)
-            current_app.logger.error(f"Integrity error creating note: {e}", exc_info=True)
-            return internal_err_resp(message="Database integrity error (e.g. duplicate note).")
+            current_app.logger.warning(
+                f"Schema validation error creating note: {err.messages}. Data: {data}"
+            )
+            return validation_error(False, err.messages), 400
+        except IntegrityError as error:
+            db.session.rollback()
+            current_app.logger.warning(
+                f"Database integrity error creating note: {error}. Data: {data}",
+                exc_info=True,
+            )
+            return internal_err_resp()
+        except SQLAlchemyError as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Database error creating note: {error}. Data: {data}", exc_info=True
+            )
+            return internal_err_resp()
         except Exception as error:
-            db.session.rollback(); current_app.logger.error(f"Unexpected error creating note: {error}", exc_info=True)
+            db.session.rollback()
+            current_app.logger.error(
+                f"Unexpected error creating note: {error}. Data: {data}", exc_info=True
+            )
             return internal_err_resp()
 
+    # --- UPDATE (Teacher/Admin) ---
     @staticmethod
-    def update_note(note_id: int, data: dict, current_user_id: int, current_user_role: str):
+    # Add type hints
+    def update_note(
+        note_id: int, data: dict, current_user_id: int, current_user_role: str
+    ):
+        """Update an existing note (value, comment). Assumes @roles_required handled base role."""
         note = Note.query.get(note_id)
         if not note:
-            return err_resp("Note not found!", "note_404_update", 404)
+            current_app.logger.info(
+                f"Attempted update for non-existent note ID: {note_id}"
+            )
+            return err_resp("Note not found!", "note_404", 404)
 
-        can_update = (current_user_role == "admin") or \
-                     (current_user_role == "teacher" and note.teacher_id == int(current_user_id))
+        # --- Record-Level Authorization Check ---
+        can_update = (current_user_role == "admin") or (
+            current_user_role == "teacher" and note.teacher_id == int(current_user_id)
+        )
+
         if not can_update:
-            return err_resp("Forbidden: You cannot update this note.", "update_note_forbidden", 403)
+            current_app.logger.warning(
+                f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to update note {note_id} created by teacher {note.teacher_id}."
+            )
+            return err_resp(
+                "Forbidden: You cannot update this note.", "update_forbidden", 403
+            )
+
         if not data:
-            return err_resp("Request body cannot be empty for update.", "empty_update_data_note", 400)
+            current_app.logger.warning(
+                f"Attempted update for note {note_id} with empty data."
+            )
+            return err_resp(
+                "Request body cannot be empty for update.", "empty_update_data", 400
+            )
 
         try:
-            from app.models.Note import NoteType as NoteModelTypeEnum # Specific import
+            # 1. Schema Validation & Deserialization
+            from app.models.Schemas import NoteSchema
+            from app.models.Note import NoteType
 
-            updated_any_field = False
+            note_update_schema = NoteSchema(
+                partial=True, only=("value", "type", "comment")
+            )
+
+            current_app.logger.debug(
+                f"Note data validated by schema for update. Proceeding with value checks for ID: {note_id}"
+            )
+
+            # 2. Validate Grade Value (if provided)
             if "value" in data:
                 grade_value = data["value"]
                 MIN_GRADE, MAX_GRADE = 0, 20
                 if not (MIN_GRADE <= grade_value <= MAX_GRADE):
-                    return err_resp(f"Invalid grade value. Must be between {MIN_GRADE} and {MAX_GRADE}.", "invalid_grade_value_update", 400)
+                    current_app.logger.warning(
+                        f"Invalid grade value during update: {grade_value}. Data: {data}"
+                    )
+                    return err_resp(
+                        f"Invalid grade value. Must be between {MIN_GRADE} and {MAX_GRADE}.",
+                        "invalid_grade_value",
+                        400,
+                    )
                 note.value = grade_value
-                updated_any_field = True
 
+            # 3. Validate and Update Note Type (if provided)
             if "type" in data:
                 try:
-                    note_type_enum_val = NoteModelTypeEnum(data["type"].lower())
-                    # Check for duplicate if type is changing
-                    if note.type != note_type_enum_val:
-                        existing_note = Note.query.filter(
-                            Note.student_id == note.student_id,
-                            Note.module_id == note.module_id,
-                            Note.type == note_type_enum_val,
-                            Note.id != note_id # Exclude self
-                        ).first()
-                        if existing_note:
-                            return err_resp(f"A '{data['type']}' note already exists for this student in this module.", "duplicate_note_type_update", 409)
-                    note.type = note_type_enum_val
-                    updated_any_field = True
+                    note_type = NoteType(data["type"])
+                    note.type = note_type
                 except ValueError:
-                    return err_resp("Invalid note type. Must be one of: cc, exam1, exam2.", "invalid_note_type_update", 400)
-                except ImportError:
-                     current_app.logger.error("NoteType enum for update not found in app.models.Note.")
-                     return internal_err_resp(message="Server configuration error for note types.")
+                    current_app.logger.warning(
+                        f"Invalid note type during update: {data['type']}. Data: {data}"
+                    )
+                    return err_resp(
+                        "Invalid note type. Must be one of: cc, exam1, exam2.",
+                        "invalid_note_type",
+                        400,
+                    )
 
-
+            # 4. Update comment if provided
             if "comment" in data:
-                note.comment = data.get("comment") # Allow setting comment to None or empty
-                updated_any_field = True
+                note.comment = data["comment"]
 
-            if not updated_any_field:
-                 return err_resp("No valid fields (value, type, comment) provided for update.", "no_fields_to_update_note", 400)
-
-
-            db.session.add(note) # or just db.session.commit() if changes are tracked
+            # 5. Commit Changes
+            db.session.add(note)
             db.session.commit()
+            current_app.logger.info(
+                f"Note updated successfully for ID: {note_id} by User ID: {current_user_id}"
+            )
 
-            # For the API response, reload or ensure joins for consistent output
-            response_note = Note.query.options(
-                joinedload(Note.student).joinedload(Student.user),
-                joinedload(Note.student).joinedload(Student.parent),
-                joinedload(Note.module),
-                joinedload(Note.teacher).joinedload(Teacher.user)
-            ).get(note.id)
-
-            note_resp_data = dump_data(response_note if response_note else note)
-            if response_note:
-                if response_note.student:
-                    s_user = getattr(response_note.student, 'user', None)
-                    s_fn = getattr(s_user or response_note.student, 'first_name', '')
-                    s_ln = getattr(s_user or response_note.student, 'last_name', '')
-                    note_resp_data["student_name"] = f"{s_fn} {s_ln}".strip()
-                if response_note.module:
-                    note_resp_data["module_name"] = response_note.module.name
-                if response_note.teacher and hasattr(response_note.teacher, 'user') and response_note.teacher.user:
-                    note_resp_data["teacher_name"] = f"{response_note.teacher.user.first_name} {response_note.teacher.user.last_name}".strip()
-                elif response_note.teacher:
-                     note_resp_data["teacher_name"] = f"{response_note.teacher.first_name} {response_note.teacher.last_name}".strip()
-
+            # 6. Serialize & Respond using dump_data
+            note_resp_data = dump_data(note)
             resp = message(True, "Note updated successfully.")
             resp["note"] = note_resp_data
             return resp, 200
+
+        except ValidationError as err:
+            db.session.rollback()
+            current_app.logger.warning(
+                f"Schema validation error updating note {note_id}: {err.messages}. Data: {data}"
+            )
+            return validation_error(False, err.messages), 400
+        except SQLAlchemyError as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Database error updating note {note_id}: {error}. Data: {data}",
+                exc_info=True,
+            )
+            return internal_err_resp()
         except Exception as error:
             db.session.rollback()
-            current_app.logger.error(f"Error updating note {note_id}: {error}", exc_info=True)
+            current_app.logger.error(
+                f"Unexpected error updating note {note_id}: {error}. Data: {data}",
+                exc_info=True,
+            )
             return internal_err_resp()
 
+    # --- DELETE (Teacher/Admin) ---
     @staticmethod
+    # Add type hint
     def delete_note(note_id: int, current_user_id: int, current_user_role: str):
+        """Delete a note by ID. Assumes @roles_required handled base role."""
         note = Note.query.get(note_id)
         if not note:
-            return err_resp("Note not found!", "note_404_delete", 404)
+            current_app.logger.info(
+                f"Attempted delete for non-existent note ID: {note_id}"
+            )  # Add logging
+            return err_resp("Note not found!", "note_404", 404)
 
-        can_delete = (current_user_role == "admin") or \
-                     (current_user_role == "teacher" and note.teacher_id == int(current_user_id))
+        # --- Record-Level Authorization Check ---
+        # Only admin or the teacher who created the note can delete
+        can_delete = (current_user_role == "admin") or (
+            current_user_role == "teacher" and note.teacher_id == int(current_user_id)
+        )
+
         if not can_delete:
-            return err_resp("Forbidden: You cannot delete this note.", "delete_note_forbidden", 403)
+            current_app.logger.warning(
+                f"Forbidden: User {current_user_id} (Role: {current_user_role}) attempted to delete note {note_id} created by teacher {note.teacher_id}."
+            )  # Add logging
+            return err_resp(
+                "Forbidden: You cannot delete this note.", "delete_forbidden", 403
+            )
+
         try:
+            current_app.logger.warning(
+                f"User {current_user_id} (Role: {current_user_role}) attempting to delete note {note_id}."
+            )  # Log intent
+
             db.session.delete(note)
             db.session.commit()
+
+            current_app.logger.info(
+                f"Note {note_id} deleted successfully by User ID: {current_user_id}."
+            )  # Log success
             return None, 204
+
+        except SQLAlchemyError as error:
+            db.session.rollback()
+            current_app.logger.error(
+                f"Database error deleting note {note_id}: {error}", exc_info=True
+            )
+            return err_resp(
+                f"Could not delete note due to a database constraint or error.",
+                "delete_error_db",
+                500,
+            )
         except Exception as error:
             db.session.rollback()
-            current_app.logger.error(f"Error deleting note {note_id}: {error}", exc_info=True)
+            current_app.logger.error(
+                f"Unexpected error deleting note {note_id}: {error}", exc_info=True
+            )
             return internal_err_resp()
-
