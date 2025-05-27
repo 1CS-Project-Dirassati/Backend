@@ -109,6 +109,12 @@ class AuthService:
             if not user:
                 return err_resp("Email does not match any account.", "email_404", 404)
 
+            if user.archived:
+                return err_resp(
+                    "This account has been archived. Please contact support.",
+                    "account_archived",
+                    403,
+                )
             # Assuming user model has verify_password method using check_password_hash
             if user.verify_password(password):
                 user_info = schemas[role].dump(user)

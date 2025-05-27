@@ -189,6 +189,9 @@ class StudentDto:
             "docs_url": fields.String(
                 required=False, description="URL to child's documents (optional)"
             ),
+            "level_id": fields.Integer(
+                required=True, description="ID of the child's level"
+            ),
         },
     )
 

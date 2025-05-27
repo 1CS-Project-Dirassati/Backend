@@ -1,32 +1,24 @@
 from flask_restx import Namespace, fields
 from flask_restx.reqparse import RequestParser
 
-# Assuming Enum is defined in models, adjust path if needed
-# from app.models import NotificationType
-
-# Placeholder if NotificationType enum isn't available yet
-# notification_type_choices = ["system", "payment", "attendance", "message", "grade", "application_submitted"]
-# Real implementation should fetch from Enum:
+# Import the NotificationType Enum directly
 try:
     from app.models import NotificationType
 
-    notification_type_choices = [t.value for t in NotificationType]
+    notification_type_enum_choices = [t.value for t in NotificationType]
 except ImportError:
-    print("Warning: NotificationType enum not found, using placeholder choices.")
-    notification_type_choices = [
+    notification_type_enum_choices = [
         "system",
         "payment",
-        "attendance",
-        "message",
+        "absence",
         "grade",
-        "application_submitted",
-    ]
+        "message",
+    ]  # Fallback
 
 
 class NotificationDto:
     """Data Transfer Objects and Request Parsers for the Notification API."""
 
-    # Updated namespace description
     api = Namespace(
         "notifications", description="Notification related operations for users."
     )
@@ -41,12 +33,12 @@ class NotificationDto:
         help="Filter notifications by read status (true/false).",
     )
     notification_filter_parser.add_argument(
-        "type",
+        "notification_type",  # Changed from "type" to "notification_type" for clarity
         type=str,
         location="args",
-        required=False,  # Renamed to 'type' for consistency
-        choices=notification_type_choices,  # Use choices if enum is available
-        help="Filter notifications by type.",
+        required=False,
+        choices=notification_type_enum_choices,  # Use enum values for choices
+        help=f"Filter by notification type. Valid types: {', '.join(notification_type_enum_choices)}.",
     )
     notification_filter_parser.add_argument(
         "page",
@@ -65,21 +57,28 @@ class NotificationDto:
         help="Number of items per page (default: 15).",
     )
 
-    # Define the core 'notification' object model (using polymorphic fields)
+    # Define the core 'notification' object model
     notification = api.model(
         "Notification Object",
         {
             "id": fields.Integer(
                 readonly=True, description="Notification unique identifier"
             ),
-            # Replaced parent_id with polymorphic fields
             "recipient_type": fields.String(
                 required=True,
                 readonly=True,
                 description="Role of the recipient (e.g., parent, admin)",
             ),
             "recipient_id": fields.Integer(
-                required=True, readonly=True, description="ID of the recipient user"
+                required=True,
+                readonly=True,
+                description="ID of the recipient user (User.id)",
+            ),
+            "notification_type": fields.String(  # Changed from 'type' to 'notification_type'
+                required=True,
+                readonly=True,
+                description="Type of the notification (e.g., system, grade)",
+                enum=notification_type_enum_choices,  # Document possible enum values
             ),
             "message": fields.String(
                 required=True, readonly=True, description="Content of the notification"
@@ -87,13 +86,6 @@ class NotificationDto:
             "link": fields.String(
                 readonly=True,
                 description="Optional frontend link related to the notification",
-            ),  # Added link
-            # Renamed notification_type to type
-            "type": fields.String(
-                required=False,
-                readonly=True,
-                description="Type/category of notification",
-                enum=notification_type_choices,
             ),
             "is_read": fields.Boolean(
                 required=True, description="Indicates if the notification has been read"
@@ -105,7 +97,7 @@ class NotificationDto:
             "updated_at": fields.DateTime(
                 readonly=True,
                 description="Timestamp when the notification was last updated (e.g., read) (UTC)",
-            ),  # Added updated_at
+            ),
         },
     )
 
@@ -141,31 +133,36 @@ class NotificationDto:
         },
     )
 
-    # --- DTOs for POST/PATCH ---
-    # Updated create input to be polymorphic
+    # DTO for Admin creating a notification
+    # 'notification_type' is NO LONGER expected from the admin in the request body.
     notification_create_input = api.model(
         "Notification Create Input (Admin)",
         {
             "recipient_type": fields.String(
                 required=True,
                 description="Role of the recipient (e.g., parent, student, teacher, admin)",
+                example="student",
             ),
             "recipient_id": fields.Integer(
-                required=True, description="ID of the recipient user"
+                required=True, description="User ID of the recipient", example=101
             ),
             "message": fields.String(
-                required=True, description="Content of the notification"
+                required=True,
+                description="Content of the notification",
+                example="Your report is ready.",
             ),
             "link": fields.String(
-                required=False,
+                required=False,  # Link is optional
                 description="Optional frontend link related to the notification",
+                example="/reports/123",
             ),
+            # 'notification_type' field is removed from input, will be defaulted by the service.
             "type": fields.String(
                 required=False,
-                description="Type/category of notification",
-                enum=notification_type_choices,
+                description="Type of the notification (e.g., system, grade). Defaults to 'system'.",
+                example="system",
+                default="system",  # Default value if not provided
             ),
-            # is_read defaults to False
         },
     )
 
@@ -179,7 +176,7 @@ class NotificationDto:
         },
     )
 
-    # --- NEW DTO for Unread Count ---
+    # DTO for Unread Count
     unread_count_resp = api.model(
         "Unread Count Response",
         {

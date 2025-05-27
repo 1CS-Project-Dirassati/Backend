@@ -49,9 +49,6 @@ class Notification(db.Model):
         String(255), nullable=True
     )  # Optional URL related to the notification
     is_read = Column(Boolean, default=False, nullable=False)
-    type = Column(
-        String(50), nullable=True, index=True
-    )  # Optional category (e.g., 'grade', 'absence', 'application', 'message')
 
     # Optional: Track who/what triggered the notification
     # sender_type = Column(String(50), nullable=True)

@@ -97,8 +97,7 @@ class NoteSchema(ma.SQLAlchemyAutoSchema):
 
 
 class NotificationSchema(ma.SQLAlchemyAutoSchema):
-    notification_type = fields.Enum(NotificationType, by_value=False)
-
+    notification_type = fields.Enum(NotificationType, by_value=True)
     class Meta:
         model = Notification
         load_instance = True

@@ -307,6 +307,7 @@ class StudentService:
                 "first_name": data["first_name"],
                 "last_name": data["last_name"],
                 "docs_url": data.get("docs_url"),
+                "level_id": data.get("level_id"),
             }
             redis_expiry = current_app.config.get(
                 "CHILD_REGISTRATION_TOKEN_MAX_AGE_SECONDS", 7200
